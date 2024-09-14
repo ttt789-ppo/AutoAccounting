@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 import net.ankio.auto.R
 import net.ankio.auto.databinding.DialogBillCategoryBinding
 import net.ankio.auto.storage.Logger
+import net.ankio.auto.ui.api.BaseSheetDialog
 import org.ezbook.server.db.model.BillInfoModel
 import org.ezbook.server.db.model.BookNameModel
 import org.ezbook.server.db.model.CategoryRuleModel
@@ -67,7 +68,7 @@ class BillCategoryDialog(
                 return@setOnClickListener
             }
             val list: MutableList<HashMap<String, Any>> = mutableListOf()
-          //  var text = "若满足"
+            //  var text = "若满足"
             var condition = ""
             if (shopName.isNotEmpty()) {
                 val select = 0
@@ -89,7 +90,7 @@ class BillCategoryDialog(
                         "js" to js,
                         "text" to msg,
                     )
-               // text += msg
+                // text += msg
                 condition += js
                 list.add(data)
             }
@@ -103,7 +104,7 @@ class BillCategoryDialog(
                             "js" to " && ",
                         )
                     condition += " && "
-                        //    text += " 且 "
+                    //    text += " 且 "
                     list.add(innerData)
                 }
                 val select = 0
@@ -125,11 +126,11 @@ class BillCategoryDialog(
                         "text" to msg,
                     )
                 condition += js
-              //  text += msg
+                //  text += msg
                 list.add(data)
             }
 
-          //  text += "，则账本为【${billInfoModel.bookName}】，分类为【${billInfoModel.cateName}】。"
+            //  text += "，则账本为【${billInfoModel.bookName}】，分类为【${billInfoModel.cateName}】。"
 
             lifecycleScope.launch {
                 Logger.i("condition:$condition")
@@ -150,8 +151,8 @@ class BillCategoryDialog(
                 // categoryRuleModel.text = text
                 categoryRuleModel.element = Gson().toJson(list)
                 categoryRuleModel.creator = "user"
-             /*   customRuleModel.auto = true
-                customRuleModel.use = true*/
+                /*   customRuleModel.auto = true
+                   customRuleModel.use = true*/
                 CategoryRuleModel.put(categoryRuleModel)
                 dismiss()
             }

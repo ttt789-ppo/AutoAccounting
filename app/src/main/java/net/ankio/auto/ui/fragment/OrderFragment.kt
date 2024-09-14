@@ -19,73 +19,114 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import net.ankio.auto.App
 import net.ankio.auto.R
-import net.ankio.auto.databinding.FragmentOrderBinding
-//import net.ankio.auto.ui.adapter.OrderAdapter
-import net.ankio.auto.utils.AppUtils
-import org.ezbook.server.db.model.BillInfoModel
-import net.ankio.auto.ui.api.BaseFragment
+import net.ankio.auto.databinding.FragmentLogBinding
+import net.ankio.auto.ui.adapter.OrderAdapter
+import net.ankio.auto.ui.api.BasePageFragment
 import net.ankio.auto.ui.models.ToolbarMenuItem
+import net.ankio.auto.utils.DateUtils
+import org.ezbook.server.db.model.BillInfoModel
 
-class OrderFragment : BaseFragment() {
+open class OrderFragment : BasePageFragment<Pair<String, List<BillInfoModel>>>() {
+    override suspend fun loadData(callback: (resultData: List<Pair<String, List<BillInfoModel>>>) -> Unit) {
+        val list = BillInfoModel.list(page, pageSize)
+
+        val newIndex = mutableListOf<Int>()
+        val updateIndex = mutableListOf<Int>()
+
+
+        list.forEach { item ->
+            val day = DateUtils.stampToDate(item.time, "yyyy-MM-dd")
+            val dayItem = pageData.find { pair -> pair.first == day }
+
+            if (dayItem == null) {
+                // 新的一天，插入一个新的 Pair
+                val pair = Pair(day, listOf(item))
+                pageData.add(pair)
+                newIndex.add(pageData.indexOf(pair))
+            } else {
+                // 该天已存在，更新现有条目
+                val index = pageData.indexOf(dayItem)
+                val items = dayItem.second.toMutableList()
+                items.add(item)
+                pageData[index] = Pair(day, items) // 直接更新 pageData 而不是 remove 和 add
+                updateIndex.add(index)
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            // 统一更新 RecyclerView 的数据
+            newIndex.forEach { index ->
+                statusPage.contentView?.adapter?.notifyItemInserted(index)
+            }
+            updateIndex.forEach { index ->
+                statusPage.contentView?.adapter?.notifyItemChanged(index)
+            }
+
+            callback.invoke(if (list.isEmpty()) emptyList() else pageData)
+        }
+    }
+
+
+    override fun loadDataInside(callback: ((Boolean, Boolean) -> Unit)?) {
+        if (page == 1) {
+            resetPage()
+        }
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                loadData { resultData ->
+                    if (pageData.isEmpty()) {
+                        statusPage.showEmpty()
+                        callback?.invoke(true, false)
+                        return@loadData
+                    }
+                    statusPage.showContent()
+
+
+                    if (callback != null) callback(true, resultData.isNotEmpty())
+                }
+            }
+        }
+    }
+
     override val menuList: ArrayList<ToolbarMenuItem>
         get() =
             arrayListOf(
                 ToolbarMenuItem(R.string.item_sync, R.drawable.float_round) {
                     // 同步账单
-                    AppUtils.startBookApp()
+                    App.startBookApp()
                 },
             )
-    private lateinit var binding: FragmentOrderBinding
-    private lateinit var recyclerView: RecyclerView
-    //private lateinit var adapter: OrderAdapter
-    private lateinit var layoutManager: LinearLayoutManager
-    private val dataItems = ArrayList<Pair<String, List<BillInfoModel>>>()
+    private lateinit var binding: FragmentLogBinding
 
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View {
-        binding = FragmentOrderBinding.inflate(layoutInflater)
-        recyclerView = binding.recyclerView
-        layoutManager = LinearLayoutManager(requireContext())
+        binding = FragmentLogBinding.inflate(layoutInflater)
+        statusPage = binding.statusPage
+        val recyclerView = binding.statusPage.contentView!!
+        val layoutManager = LinearLayoutManager(requireContext())
         recyclerView.layoutManager = layoutManager
-
-       /* adapter = OrderAdapter(dataItems)
-
-        recyclerView.adapter = adapter*/
+        recyclerView.adapter = OrderAdapter(pageData)
         scrollView = recyclerView
+
+        loadDataEvent(binding.refreshLayout)
+
         return binding.root
-    }
-
-  /*  private fun loadMoreData() {
-        val loading = LoadingUtils(requireActivity())
-        loading.show(R.string.loading)
-
-        lifecycleScope.launch {
-            withContext(Dispatchers.IO) {
-                val autoAccountingConfig = AppUtils.getService().config()
-                val list = BillInfo.getBillListGroup(500)
-                dataItems.clear()
-
-                list.forEach {
-                    dataItems.add(Pair(it.first, BillInfo.getBillByIds(it.second)))
-                }
-                adapter.notifyConfig(autoAccountingConfig)
-            }
-
-            adapter.notifyDataSetChanged()
-            binding.empty.root.visibility = if (dataItems.isEmpty()) View.VISIBLE else View.GONE
-            loading.close()
-        }
     }
 
     override fun onResume() {
         super.onResume()
-        // 加载数据
-        loadMoreData()
-    }*/
+        statusPage.showLoading()
+        loadDataInside()
+    }
+
 }

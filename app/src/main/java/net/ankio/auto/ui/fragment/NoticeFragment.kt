@@ -27,16 +27,17 @@ import kotlinx.coroutines.withContext
 import net.ankio.auto.App
 import net.ankio.auto.R
 import net.ankio.auto.databinding.FragmentLogBinding
+import net.ankio.auto.storage.ConfigUtils
 import net.ankio.auto.storage.Logger
-import net.ankio.auto.storage.SpUtils
 import net.ankio.auto.ui.adapter.AppAdapter
 import net.ankio.auto.ui.api.BasePageFragment
 import net.ankio.auto.ui.models.AppInfo
 import net.ankio.auto.ui.models.ToolbarMenuItem
+import org.ezbook.server.constant.Setting
 import org.ezbook.server.db.model.SettingModel
 
 
-class NoticeFragment: BasePageFragment<AppInfo>() {
+class NoticeFragment : BasePageFragment<AppInfo>() {
 
 
     //TODO 需要根据已有规则支持显示推荐勾选、一键勾选推荐应用
@@ -44,18 +45,18 @@ class NoticeFragment: BasePageFragment<AppInfo>() {
     private var selectedApps: List<String> = emptyList()
 
     override val menuList: ArrayList<ToolbarMenuItem> = arrayListOf(
-        ToolbarMenuItem(R.string.item_search, R.drawable.menu_icon_search,true) {
-           loadDataInside()
+        ToolbarMenuItem(R.string.item_search, R.drawable.menu_icon_search, true) {
+            loadDataInside()
         }
     )
 
     override suspend fun loadData(callback: (resultData: List<AppInfo>) -> Unit) {
-       if (page > 1){
-           withContext(Dispatchers.Main) {
-               callback(emptyList())
-           }
-           return
-       }
+        if (page > 1) {
+            withContext(Dispatchers.Main) {
+                callback(emptyList())
+            }
+            return
+        }
         // 获取PackageManager实例
         val packageManager: PackageManager = requireActivity().packageManager
         // 获取所有已安装的应用程序
@@ -73,22 +74,22 @@ class NoticeFragment: BasePageFragment<AppInfo>() {
             var appName = ""
 
             //忽略大小写
-            if (searchData!=="") {
+            if (searchData !== "") {
                 appName = packageManager.getApplicationLabel(applicationInfo).toString()
-                if (!appName.contains(searchData,true)) continue
+                if (!appName.contains(searchData, true)) continue
             }
 
             val isSystemApp = (applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
 
-            if (isSystemApp)continue
+            if (isSystemApp) continue
 
             var isSelected = false
             if (selectedApps.contains(packageName)) {
-                 isSelected = true // 默认未选择
+                isSelected = true // 默认未选择
             }
 
             // 创建AppInfo对象并添加到列表
-            val appInfo = AppInfo(packageName, appName,applicationInfo, isSelected)
+            val appInfo = AppInfo(packageName, appName, applicationInfo, isSelected)
             appInfos.add(appInfo)
         }
 
@@ -112,9 +113,9 @@ class NoticeFragment: BasePageFragment<AppInfo>() {
         val recyclerView = binding.statusPage.contentView!!
         recyclerView.layoutManager = LinearLayoutManager(requireContext())
         scrollView = recyclerView
-        selectedApps = SpUtils.getString("selectedApps", "").split(",")
+        selectedApps = ConfigUtils.getString(Setting.LISTENER_APP_LIST, "").split(",")
         Logger.d("selectedApps => $selectedApps")
-        recyclerView.adapter = AppAdapter(pageData,requireActivity().packageManager){
+        recyclerView.adapter = AppAdapter(pageData, requireActivity().packageManager) {
             selectedApps = if (!it.isSelected) {
                 selectedApps.filter { packageName -> packageName != it.packageName }
             } else {
@@ -129,15 +130,14 @@ class NoticeFragment: BasePageFragment<AppInfo>() {
     }
 
 
-
     override fun onPause() {
         super.onPause()
         //去重
         selectedApps = selectedApps.distinct()
         val str = selectedApps.joinToString(",")
-        SpUtils.putString("selectedApps", str)
+        ConfigUtils.putString(Setting.LISTENER_APP_LIST, str)
         App.launch {
-            SettingModel.set("selectedApps", str)
+            SettingModel.set(Setting.LISTENER_APP_LIST, str)
             Logger.d("selectedApps => $selectedApps")
         }
     }

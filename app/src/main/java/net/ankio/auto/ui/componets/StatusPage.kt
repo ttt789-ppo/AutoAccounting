@@ -16,14 +16,12 @@
 package net.ankio.auto.ui.componets
 
 import android.content.Context
-import android.graphics.Color
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.RelativeLayout
-import androidx.annotation.Nullable
 import androidx.recyclerview.widget.RecyclerView
 import net.ankio.auto.R
 import net.ankio.auto.databinding.StatusPageBinding
@@ -38,7 +36,7 @@ class StatusPage : RelativeLayout {
 
 
     constructor(context: Context) : super(context) {
-       init(context, null)
+        init(context, null)
     }
 
     constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
@@ -50,17 +48,19 @@ class StatusPage : RelativeLayout {
         attrs: AttributeSet?,
         defStyleAttr: Int
     ) : super(context, attrs, defStyleAttr) {
-       init(context, attrs)
+        init(context, attrs)
     }
 
-    fun init( context: Context,
-              attrs: AttributeSet?){
+    fun init(
+        context: Context,
+        attrs: AttributeSet?
+    ) {
         val binding = StatusPageBinding.inflate(LayoutInflater.from(context), this, true)
         loadingView = binding.loadingView
         emptyView = binding.emptyView
         errorView = binding.errorView
         contentView = binding.contentView
-        val  root = binding.rootView
+        val root = binding.rootView
         context.theme.obtainStyledAttributes(
             attrs,
             R.styleable.StatusPage,
@@ -70,12 +70,16 @@ class StatusPage : RelativeLayout {
             try {
                 val height = getString(R.styleable.StatusPage_innerHeight)
                 val layoutParams = root.layoutParams
-                layoutParams.height = if (height.equals("wrap_content")) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
+                layoutParams.height =
+                    if (height.equals("wrap_content")) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
                 root.layoutParams = layoutParams
             } finally {
                 recycle()
             }
+
         }
+
+
     }
 
 

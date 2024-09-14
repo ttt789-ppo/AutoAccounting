@@ -21,7 +21,6 @@ import android.content.res.Configuration
 import android.os.Bundle
 import androidx.annotation.AttrRes
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.elevation.SurfaceColors
@@ -30,9 +29,6 @@ import com.quickersilver.themeengine.ThemeMode
 import com.zackratos.ultimatebarx.ultimatebarx.addStatusBarTopPadding
 import com.zackratos.ultimatebarx.ultimatebarx.navigationBar
 import com.zackratos.ultimatebarx.ultimatebarx.statusBar
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import net.ankio.auto.App
 import net.ankio.auto.utils.LanguageUtils
 
@@ -85,6 +81,7 @@ open class BaseActivity : AppCompatActivity() {
         mStatusBarColor2 = SurfaceColors.SURFACE_4.getColor(this@BaseActivity)
     }
 
+
     /**
      * 获取主题色
      */
@@ -101,6 +98,7 @@ open class BaseActivity : AppCompatActivity() {
         val intent = Intent(this, T::class.java)
         startActivity(intent)
     }
+
     /**
      * 切换activity
      */
@@ -109,6 +107,7 @@ open class BaseActivity : AppCompatActivity() {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
     }
+
     /**
      * 重新创建activity
      */
@@ -116,5 +115,10 @@ open class BaseActivity : AppCompatActivity() {
         runOnUiThread {
             recreate()
         }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        App.pageStopOrDestroy()
     }
 }

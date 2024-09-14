@@ -22,6 +22,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import kotlinx.coroutines.launch
 import net.ankio.auto.databinding.DialogBillMoreBinding
+import net.ankio.auto.ui.api.BaseSheetDialog
 //import net.ankio.auto.ui.adapter.OrderItemAdapter
 import org.ezbook.server.db.model.BillInfoModel
 
@@ -42,7 +43,7 @@ class BillMoreDialog(
         cardView = binding.cardView
         cardViewInner = binding.innerView
 
-   //     binding.recyclerView.adapter = adapter
+        //     binding.recyclerView.adapter = adapter
 
         return binding.root
     }
@@ -53,13 +54,13 @@ class BillMoreDialog(
     ) {
         super.show(float, cancel)
         lifecycleScope.launch {
-         //   val config = AppUtils.getService().config()
-          /*  BillInfo.getBillByGroup(billInfo.id).apply {
-                adapter.notifyConfig(config)
-                dataItems.clear()
-                dataItems.addAll(this)
-                adapter.notifyDataSetChanged()
-            }*/
+            //   val config = AppUtils.getService().config()
+            /*  BillInfo.getBillByGroup(billInfo.id).apply {
+                  adapter.notifyConfig(config)
+                  dataItems.clear()
+                  dataItems.addAll(this)
+                  adapter.notifyDataSetChanged()
+              }*/
         }
     }
 }

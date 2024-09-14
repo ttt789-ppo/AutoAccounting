@@ -23,7 +23,7 @@ import net.ankio.auto.hooks.qianji.QianjiHooker
 import net.ankio.auto.hooks.wechat.WechatHooker
 
 object Apps {
-    fun get() : MutableList<HookerManifest>{
+    fun get(): MutableList<HookerManifest> {
         return mutableListOf(
             AndroidHooker(), // Android
             AutoHooker(), // Auto
@@ -31,8 +31,10 @@ object Apps {
             // 记账App hook
             ////////////////////////////
             QianjiHooker(),
-
-         //   WechatHooker(), // Wechat
+            ////////////////////////////
+            // 哪些App可能发送记账账单？
+            ////////////////////////////
+            WechatHooker(), // Wechat
             AliPayHooker() // AliPay
             ////////////////////////////
         )

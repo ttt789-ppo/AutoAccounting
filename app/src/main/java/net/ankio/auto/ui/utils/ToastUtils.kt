@@ -16,39 +16,38 @@
 package net.ankio.auto.ui.utils
 
 import android.app.Application
-import com.hjq.toast.ToastParams
 import com.hjq.toast.Toaster
-import com.hjq.toast.style.CustomToastStyle
 import net.ankio.auto.App
-import net.ankio.auto.R
 
 
 object ToastUtils {
-    fun init(application: Application){
+
+
+    fun init(application: Application) {
         //这里进行主题包装
         Toaster.init(application)
     }
 
-    fun info(int: Int){
+    fun info(int: Int) {
         info(App.app.getString(int))
     }
 
-    fun error(int: Int){
+    fun error(int: Int) {
         error(App.app.getString(int))
     }
 
-    fun info(msg: String){
-      /*  val params = ToastParams()
-        params.text = msg
-        params.style = CustomToastStyle(R.layout.toast_info)
-        Toaster.show(params)*/
+    fun info(msg: String) {
+        /* val params = ToastParams()
+           params.text = msg
+           params.style = CustomToastStyle(R.layout.toast_info)
+           Toaster.show(params)*/
         Toaster.show(msg)
     }
 
-    fun error(msg: String){
-        val params = ToastParams()
-        params.text = msg
-        params.style = CustomToastStyle(R.layout.toast_error)
-        Toaster.show(params)
+    fun error(msg: String) {
+        /*  val params = ToastParams()
+          params.text = msg
+          params.style = CustomToastStyle(R.layout.toast_error)*/
+        Toaster.show(msg)
     }
 }

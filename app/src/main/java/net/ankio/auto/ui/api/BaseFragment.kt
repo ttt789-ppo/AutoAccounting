@@ -20,6 +20,7 @@ import android.animation.ValueAnimator
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.ScrollView
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.appcompat.widget.SearchView
 import androidx.core.graphics.drawable.DrawableCompat
@@ -31,6 +32,8 @@ import net.ankio.auto.App
 import net.ankio.auto.databinding.ActivityMainBinding
 import net.ankio.auto.ui.activity.MainActivity
 import net.ankio.auto.ui.models.ToolbarMenuItem
+import java.lang.ref.WeakReference
+
 
 /**
  * 基础的Fragment
@@ -48,7 +51,8 @@ abstract class BaseFragment : Fragment() {
     /**
      * 获取activity的binding
      */
-    private lateinit var activityBinding: ActivityMainBinding
+    private lateinit var activityBinding: WeakReference<ActivityMainBinding>
+
     /**
      * 滚动视图
      */
@@ -58,13 +62,13 @@ abstract class BaseFragment : Fragment() {
         super.onResume()
         val mainActivity = activity as MainActivity
         if (!this::activityBinding.isInitialized) {
-            activityBinding = mainActivity.getBinding()
+            activityBinding = WeakReference(mainActivity.getBinding())
         }
 
 
-        activityBinding.toolbar.visibility = View.VISIBLE
+        activityBinding.get()!!.toolbar.visibility = View.VISIBLE
         // 重置顶部导航栏图标
-        activityBinding.toolbar.menu.clear()
+        activityBinding.get()!!.toolbar.menu.clear()
         // 添加菜单
         menuList.forEach {
             addMenuItem(it)
@@ -105,9 +109,16 @@ abstract class BaseFragment : Fragment() {
                 animatorStart = false
             }
 
-            scrollView.addNavigationBarBottomPadding()
+            // 找到scrollView的第一个子视图
+            if (scrollView is ScrollView && (scrollView as ScrollView).childCount > 0) {
+                val view = (scrollView as ScrollView).getChildAt(0)
+                view.addNavigationBarBottomPadding()
+            }
+
+
         }
     }
+
 
     protected var searchData = ""
 
@@ -115,7 +126,7 @@ abstract class BaseFragment : Fragment() {
      * 添加菜单
      */
     private fun addMenuItem(menuItemObject: ToolbarMenuItem) {
-        val menu = activityBinding.toolbar.menu
+        val menu = activityBinding.get()!!.toolbar.menu
         val menuItem = menu.add(Menu.NONE, Menu.NONE, Menu.NONE, getString(menuItemObject.title))
         menuItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         val icon = AppCompatResources.getDrawable(requireActivity(), menuItemObject.drawable)
@@ -127,7 +138,7 @@ abstract class BaseFragment : Fragment() {
             )
         }
 
-        if (menuItemObject.search){
+        if (menuItemObject.search) {
             menuItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM or MenuItem.SHOW_AS_ACTION_COLLAPSE_ACTION_VIEW)
 
             val searchView = SearchView(requireContext())
@@ -148,7 +159,7 @@ abstract class BaseFragment : Fragment() {
                 }
             })
 
-        }else{
+        } else {
             menuItem.setOnMenuItemClickListener {
                 menuItemObject.callback.invoke((activity as MainActivity).getNavController())
                 true
@@ -157,6 +168,7 @@ abstract class BaseFragment : Fragment() {
 
 
     }
+
 
     /**
      * toolbar颜色渐变动画
@@ -175,4 +187,16 @@ abstract class BaseFragment : Fragment() {
         colorAnimator.duration = duration
         colorAnimator.start()
     }
+
+
+    override fun onStop() {
+        super.onStop()
+        App.pageStopOrDestroy()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        App.pageStopOrDestroy()
+    }
+
 }

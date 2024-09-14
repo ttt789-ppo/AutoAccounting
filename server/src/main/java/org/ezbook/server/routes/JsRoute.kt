@@ -16,15 +16,16 @@
 package org.ezbook.server.routes
 
 
-import android.util.Log
+import android.app.ActivityOptions
+import android.content.Intent
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import org.ezbook.server.Server
+import org.ezbook.server.constant.BillType
 import org.ezbook.server.constant.DataType
 import org.ezbook.server.db.Db
 import org.ezbook.server.db.model.AppDataModel
 import org.ezbook.server.db.model.BillInfoModel
-import org.ezbook.server.db.model.SettingModel
 import org.ezbook.server.engine.RuleGenerator
 import org.ezbook.server.tools.Assets
 import org.ezbook.server.tools.Bill
@@ -70,14 +71,14 @@ class JsRoute(private val session: IHTTPSession, private val context: android.co
 
         val t = System.currentTimeMillis()
 
-        val js = RuleGenerator.data( app, dataType)
+        val js = RuleGenerator.data(app, dataType)
 
 
         if (js === "") {
             return Server.json(404, "js not Found")
         }
 
-        val result = runJS(js,data)
+        val result = runJS(js, data)
 
         if (result === "") {
             return Server.json(404, "analysis result is nothing")
@@ -113,7 +114,7 @@ class JsRoute(private val session: IHTTPSession, private val context: android.co
         win.addProperty("money", billInfoModel.money)
         win.addProperty("shopName", billInfoModel.shopName)
         win.addProperty("shopItem", billInfoModel.shopItem)
-        win.addProperty("time",time)
+        win.addProperty("time", time)
 
         var categoryResult = runJS(categoryJS, Gson().toJson(win))
 
@@ -140,17 +141,23 @@ class JsRoute(private val session: IHTTPSession, private val context: android.co
 
         Bill.setRemark(billInfoModel, context)
         //  备注生成
+        //  设置默认账本
+        Bill.setBookName(billInfoModel)
 
         // 账单分组，用于检查重复账单
-        Bill.groupBillInfo(billInfoModel,context)
+        val parent = Bill.groupBillInfo(billInfoModel, context)
 
-        if (!fromAppData){
+        if (!fromAppData) {
             // 切换到主线程
             Server.runOnMainThread {
-                startAutoPanel(billInfoModel)
+                startAutoPanel(billInfoModel, parent)
             }
             //存入数据库
             billInfoModel.id = Db.get().billInfoDao().insert(billInfoModel)
+            // 更新AppData
+            appDataModel.match = true
+            appDataModel.rule = billInfoModel.ruleName
+            Db.get().dataDao().update(appDataModel)
         }
 
         return Server.json(200, "OK", billInfoModel)
@@ -176,14 +183,14 @@ class JsRoute(private val session: IHTTPSession, private val context: android.co
         val time = json.get("time")?.asLong ?: System.currentTimeMillis()
         val channel = json.get("channel")?.asString ?: ""
         val ruleName = json.get("ruleName")?.asString ?: ""
-
+        val type = json.get("type")?.asString ?: "Expend"
         // 根据ruleName判断是否需要自动记录
         val rule = Db.get().ruleDao().query(app, dataType.name, ruleName)
         val autoRecord = rule != null && rule.autoRecord
 
 
         val billInfoModel = BillInfoModel()
-
+        billInfoModel.type = BillType.valueOf(type)
         billInfoModel.app = app
         billInfoModel.time = time
         billInfoModel.money = money
@@ -203,12 +210,18 @@ class JsRoute(private val session: IHTTPSession, private val context: android.co
     /**
      * 启动自动记账面板
      */
-    private fun startAutoPanel(billInfoModel: BillInfoModel) {
-        val intent = android.content.Intent()
+    private fun startAutoPanel(billInfoModel: BillInfoModel, parent: BillInfoModel?) {
+        val intent = Intent()
         intent.action = "org.ezbook.server.action.AUTO_PANEL"
         intent.putExtra("billInfo", Gson().toJson(billInfoModel))
-        intent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-        context.startActivity(intent)
+        if (parent != null) {
+            intent.putExtra("parent", Gson().toJson(parent))
+        }
+
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        val options = ActivityOptions.makeBasic()
+
+        context.startActivity(intent, options.toBundle())
     }
 
     class CustomPrintFunction(private val output: StringBuilder) : BaseFunction() {
@@ -228,7 +241,7 @@ class JsRoute(private val session: IHTTPSession, private val context: android.co
     /**
      * 运行js代码
      */
-    private fun runJS(jsCode: String,data:String): String {
+    private fun runJS(jsCode: String, data: String): String {
         Server.log(jsCode)
 
         val rhino: Context = Context.enter()
@@ -255,32 +268,9 @@ class JsRoute(private val session: IHTTPSession, private val context: android.co
 
     fun run(): Response {
         val js = Server.reqData(session)
-        val result = runJS(js,"")
+        val result = runJS(js, "")
         return Server.json(200, "OK", result)
     }
 
-    /**
-     * 设置
-     */
-    fun set(): Response {
-        val key = session.parameters["key"]?.firstOrNull()?.toString() ?: ""
-        if (key === "") {
-            return Server.json(400, "key is required")
-        }
-
-        val value = Server.reqData(session)
-
-        val model = SettingModel()
-        model.key = key
-        model.value = value
-
-        val data = Db.get().settingDao().query(key)
-        if (data != null) {
-            Db.get().settingDao().update(model)
-        } else {
-            Db.get().settingDao().insert(model)
-        }
-        return Server.json(200, "OK")
-    }
 
 }

@@ -33,13 +33,34 @@
         android:layout_margin="@dimen/padding"
         android:orientation="vertical">
 
-        <TextView
+        <net.ankio.auto.ui.componets.IconView
             android:id="@+id/time"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="@dimen/border_side"
-            android:layout_marginBottom="@dimen/padding"
-            android:textAppearance="@style/TextAppearance.AppCompat.Small" />
+            android:layout_marginLeft="@dimen/padding"
+            android:layout_marginRight="@dimen/padding"
+            android:layout_marginBottom="@dimen/one_padding"
+
+            android:textAppearance="@style/TextAppearance.AppCompat.Small"
+            tools:text="@tools:sample/date/ddmmyy"
+            app:iconSize="10dp"
+            app:textColor="?colorOnSurface"
+            app:iconTintEnabled="true"
+            app:iconSrc="@drawable/float_time" />
+
+        <net.ankio.auto.ui.componets.IconView
+            android:id="@+id/rule"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="@dimen/padding"
+            android:layout_marginRight="@dimen/padding"
+            android:layout_marginBottom="@dimen/one_padding"
+            android:visibility="visible"
+            app:textColor="?colorOnSurface"
+            app:iconTintEnabled="true"
+            app:iconSize="10dp"
+            app:iconSrc="@drawable/home_rule"
+            tools:text="这是一个规则名嘻嘻嘻嘻嘻嘻嘻休息休息谢谢谢谢谢称" />
 
         <TextView
             android:id="@+id/content"
@@ -47,6 +68,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:maxLines="3"
+            tools:text="这是一个规则内容"
             android:padding="@dimen/padding" />
         <RelativeLayout
             android:layout_width="wrap_content"
@@ -57,23 +79,6 @@
             >
 
             <TextView
-                android:id="@+id/rule"
-                style="@style/TextAppearance.AppCompat.Small"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_centerVertical="true"
-                android:layout_marginStart="@dimen/one_padding"
-                android:layout_marginEnd="@dimen/one_padding"
-                android:layout_toEndOf="@+id/issue"
-                android:background="@drawable/rounded_background"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:paddingLeft="@dimen/padding"
-                android:paddingTop="@dimen/one_padding"
-                android:paddingRight="@dimen/padding"
-                android:paddingBottom="@dimen/one_padding"
-                android:text="测试"
-                android:textColor="?attr/colorOnPrimary" /><TextView
                 android:id="@+id/issue"
                 style="@style/TextAppearance.AppCompat.Small"
                 android:layout_width="wrap_content"

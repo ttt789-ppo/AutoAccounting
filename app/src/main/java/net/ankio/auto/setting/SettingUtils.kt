@@ -19,6 +19,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.widget.addTextChangedListener
 import androidx.viewbinding.ViewBinding
 import net.ankio.auto.constant.ItemType
 import net.ankio.auto.databinding.SettingItemColorBinding
@@ -26,10 +27,10 @@ import net.ankio.auto.databinding.SettingItemInputBinding
 import net.ankio.auto.databinding.SettingItemSwitchBinding
 import net.ankio.auto.databinding.SettingItemTextBinding
 import net.ankio.auto.databinding.SettingItemTitleBinding
+import net.ankio.auto.storage.ConfigUtils
 import net.ankio.auto.ui.api.BaseActivity
-import net.ankio.auto.utils.CustomTabsHelper
 import net.ankio.auto.ui.utils.ListPopupUtils
-import net.ankio.auto.storage.SpUtils
+import net.ankio.auto.utils.CustomTabsHelper
 
 class SettingUtils(
     private val context: BaseActivity,
@@ -119,7 +120,7 @@ class SettingUtils(
             val isChecked = binding.switchWidget.isChecked
             setLinkVisibility(isChecked)
             settingItem.onItemClick?.invoke(isChecked, context) ?: settingItem.key?.let {
-                SpUtils.putBoolean(
+                ConfigUtils.putBoolean(
                     it,
                     isChecked,
                 )
@@ -197,10 +198,11 @@ class SettingUtils(
                     ListPopupUtils(context, binding.title, it, savedValue) { pos, key, value ->
                         binding.subTitle.text = key
 
-                        settingItem.onItemClick?.invoke(value, context) ?: settingItem.key?.let { item ->
-                            SpUtils.putString(item, value.toString())
-                            saveToSp(item, value)
-                        }
+                        settingItem.onItemClick?.invoke(value, context)
+                            ?: settingItem.key?.let { item ->
+                                ConfigUtils.putString(item, value.toString())
+                                saveToSp(item, value)
+                            }
 
                         settingItem.onSavedValue?.invoke(value, context)
                         setValue(value)
@@ -231,19 +233,33 @@ class SettingUtils(
             } ?: run {
                 settingItem.key?.apply {
                     binding.input.setText(
-                        SpUtils.getString(
+                        ConfigUtils.getString(
                             settingItem.key,
                             (settingItem.default ?: "").toString(),
                         ),
                     )
                 }
             }
+
+            binding.input.addTextChangedListener(afterTextChanged = {
+                val result = binding.input.text.toString()
+                settingItem.key?.let {
+                    ConfigUtils.putString(
+                        settingItem.key,
+                        result,
+                    )
+                } ?: run {
+                    settingItem.onSavedValue?.invoke(result, context)
+                }
+            })
+
+
         }
         destroy[settingItem] = {
             val result = binding.input.text.toString()
             settingItem.onItemClick?.invoke(result, context)
                 ?: settingItem.key?.let {
-                    SpUtils.putString(
+                    ConfigUtils.putString(
                         it,
                         result,
                     )
@@ -282,9 +298,9 @@ class SettingUtils(
         default: Any,
     ): Any {
         return when (default) {
-            is Boolean -> SpUtils.getBoolean(key, default)
-            is String -> SpUtils.getString(key, default)
-            is Int -> SpUtils.getInt(key, default)
+            is Boolean -> ConfigUtils.getBoolean(key, default)
+            is String -> ConfigUtils.getString(key, default)
+            is Int -> ConfigUtils.getInt(key, default)
             else -> default
         }
     }
@@ -294,9 +310,9 @@ class SettingUtils(
         value: Any,
     ) {
         when (value) {
-            is Boolean -> SpUtils.putBoolean(key, value)
-            is String -> SpUtils.putString(key, value)
-            is Int -> SpUtils.putInt(key, value)
+            is Boolean -> ConfigUtils.putBoolean(key, value)
+            is String -> ConfigUtils.putString(key, value)
+            is Int -> ConfigUtils.putInt(key, value)
         }
     }
 }

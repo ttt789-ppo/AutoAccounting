@@ -15,9 +15,8 @@
 
 package org.ezbook.server.tools
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.ezbook.server.Server
+import org.ezbook.server.constant.Setting
 import org.ezbook.server.db.Db
 import org.ezbook.server.db.model.AssetsMapModel
 import org.ezbook.server.db.model.AssetsModel
@@ -141,7 +140,7 @@ object Assets {
             return
         }
         val autoAsset =
-            Db.get().settingDao().query("setting_auto_asset")?.value?.toBoolean() ?: false
+            Db.get().settingDao().query(Setting.AUTO_IDENTIFY_ASSET)?.value?.toBoolean() ?: false
         billInfoModel.accountNameFrom = processAssets(rawAccountNameFrom, maps, assets, autoAsset)
         billInfoModel.accountNameTo = processAssets(rawAccountNameTo, maps, assets, autoAsset)
     }
@@ -168,7 +167,7 @@ object Assets {
         //命中算法
         if (autoAsset) {
             val autoAssetName = getAssetsByAlgorithm(assets, account)
-            if (autoAssetName != account) {
+            if (autoAssetName != account && autoAssetName.isNotEmpty()) {
                 //将映射结果保存到映射表
                 Db.get().assetsMapDao().insert(AssetsMapModel().apply {
                     name = account
@@ -177,13 +176,15 @@ object Assets {
                 })
             }
             return autoAssetName
-        }else{
+        } else {
             //将映射结果保存到映射表
-            Db.get().assetsMapDao().insert(AssetsMapModel().apply {
-                name = account
-                mapName = account
-                regex = false
-            })
+            if (account.isNotEmpty()){
+                Db.get().assetsMapDao().insert(AssetsMapModel().apply {
+                    name = account
+                    mapName = account
+                    regex = false
+                })
+            }
         }
         return account
     }

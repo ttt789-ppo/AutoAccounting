@@ -27,10 +27,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.ankio.auto.databinding.DialogCategorySelectBinding
-import net.ankio.auto.storage.SpUtils
+import net.ankio.auto.storage.ConfigUtils
 import net.ankio.auto.ui.adapter.CategorySelectorAdapter
+import net.ankio.auto.ui.api.BaseSheetDialog
 import net.ankio.auto.ui.componets.StatusPage
 import org.ezbook.server.constant.BillType
+import org.ezbook.server.constant.Setting
 import org.ezbook.server.db.model.CategoryModel
 
 /**
@@ -128,10 +130,11 @@ class CategorySelectorDialog(
         view.getLocationOnScreen(location)
         val params = view.layoutParams as MarginLayoutParams
 
-        var leftDistanceWithMargin = location[0] + view.paddingLeft + params.leftMargin - view.width/2
+        var leftDistanceWithMargin =
+            location[0] + view.paddingLeft + params.leftMargin - view.width / 2
 
-        if (SpUtils.getBoolean("setting_use_round_style",false)){
-            leftDistanceWithMargin-=view.width/2
+        if (ConfigUtils.getBoolean(Setting.USE_ROUND_STYLE, false)) {
+            leftDistanceWithMargin -= view.width / 2
         }
 
         categoryModel.id = leftDistanceWithMargin.toLong()

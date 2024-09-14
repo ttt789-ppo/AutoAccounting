@@ -13,10 +13,10 @@ android {
     compileSdk 34
     defaultConfig {
         applicationId "net.ankio.auto"
-        minSdk 28
+        minSdk 30
         targetSdk 34
         versionCode 212
-        versionName "初啼 4.0.0-beta13"
+        versionName "4.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         flavorDimensions += "version"
         productFlavors {
@@ -96,34 +96,6 @@ android {
     }
 }
 
-task extractArraysToTxt {
-    doLast {
-        // 检查当前构建的 flavor 是否是 'xposed'
-        if (gradle.startParameter.taskNames.any { it.contains("Xposed") }) {
-            // 指定 arrays.xml 文件的路径
-            def arraysXmlFile = file('src/xposed/res/values/arrays.xml')
-            // 指定输出的 txt 文件路径
-            def outputTxtFile = file('src/xposed/assets/shell/apps.txt')
-
-            // 确保输出目录存在
-            outputTxtFile.parentFile.mkdirs()
-
-            // 读取 arrays.xml 文件并提取数据
-            def arraysXmlContent = arraysXmlFile.text
-            def extractedData = arraysXmlContent.replaceAll(/<.*?>/, '').trim() // 简单地移除 XML 标签
-
-            // 写入到 txt 文件
-            outputTxtFile.text = extractedData
-        }
-    }
-}
-
-// 确保在构建 APK 之前运行此任务
-preBuild.dependsOn extractArraysToTxt
-
-
-// 构建apk之前，先构建server模块
-preBuild.dependsOn(":server:assembleRelease")
 
 dependencies {
 
@@ -173,11 +145,13 @@ dependencies {
     implementation project(":dex")
     // xml2json
     implementation libs.xmltojson
-    implementation "androidx.paging:paging-runtime:3.3.0" //@Deprecated 即将删除
     implementation project(":server")
     implementation 'org.markdownj:markdownj-core:0.4'
     //分页
     implementation  'io.github.scwang90:refresh-layout-kernel:2.1.0'      //核心必须依赖
     implementation  'io.github.scwang90:refresh-header-classics:2.1.0'    //经典刷新头
     implementation  'io.github.scwang90:refresh-footer-classics:2.1.0'    //经典加载脚
+    implementation 'com.github.luqiming666:SwipeRecyclerView:1.4.9'
+
+    debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.14'
 }

@@ -19,16 +19,17 @@ import android.content.Context
 import android.content.Intent
 import com.bugsnag.android.Bugsnag
 import com.bugsnag.android.Event
+import net.ankio.auto.App
 import net.ankio.auto.BuildConfig
 import net.ankio.auto.exceptions.AutoServiceException
+import net.ankio.auto.storage.ConfigUtils
 import net.ankio.auto.storage.Logger
-import net.ankio.auto.storage.SpUtils
 import net.ankio.auto.ui.activity.ErrorActivity
+import org.ezbook.server.constant.Setting
 import kotlin.system.exitProcess
 
 class ExceptionHandler(private val context: Context) : Thread.UncaughtExceptionHandler {
     private var mDefaultHandler: Thread.UncaughtExceptionHandler? = null
-
 
 
     init {
@@ -58,7 +59,7 @@ class ExceptionHandler(private val context: Context) : Thread.UncaughtExceptionH
         }
         // return true
         // 调试模式不上传错误数据
-        return !AppUtils.getDebug() && SpUtils.getBoolean("sendToAppCenter", true)
+        return !App.debug && ConfigUtils.getBoolean(Setting.SEND_ERROR_REPORT, true)
     }
 
     private fun getRootCause(e: Throwable): Throwable {

@@ -15,7 +15,6 @@
 
 package net.ankio.auto.ui.fragment
 
-import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -33,18 +32,16 @@ import com.google.gson.reflect.TypeToken
 import com.hjq.toast.Toaster
 import kotlinx.coroutines.launch
 import net.ankio.auto.R
-import net.ankio.auto.app.BillUtils
 import net.ankio.auto.databinding.DialogRegexInputBinding
 import net.ankio.auto.databinding.DialogRegexMoneyBinding
 import net.ankio.auto.databinding.FragmentEditBinding
 import net.ankio.auto.ui.api.BaseFragment
 import net.ankio.auto.ui.componets.FlowElement
 import net.ankio.auto.ui.componets.FlowLayoutManager
-import net.ankio.auto.ui.dialog.BookInfoDialog
 import net.ankio.auto.ui.dialog.BookSelectorDialog
 import net.ankio.auto.ui.dialog.CategorySelectorDialog
 import net.ankio.auto.ui.utils.ListPopupUtils
-import org.ezbook.server.db.model.BookNameModel
+import net.ankio.auto.utils.BillTool
 import org.ezbook.server.db.model.CategoryRuleModel
 import java.util.Calendar
 
@@ -69,7 +66,8 @@ class CategoryEditFragment : BaseFragment() {
         flexboxLayout.appendTextView(getString(R.string.if_condition_true))
 
         val listType = object : TypeToken<MutableList<HashMap<String, Any>>>() {}.type
-        val list: MutableList<HashMap<String, Any>>? = Gson().fromJson(categoryRuleModel.element, listType)
+        val list: MutableList<HashMap<String, Any>>? =
+            Gson().fromJson(categoryRuleModel.element, listType)
         // 依次排列
         if (list.isNullOrEmpty()) {
             val buttonElem =
@@ -100,7 +98,7 @@ class CategoryEditFragment : BaseFragment() {
         // 最后一个是数据
         val lastElement = list.removeLast()
         // fix #7 因为存储的时候使用的是hashmap<String,Any>，反向识别的时候可能会将Int类型识别为Double
-        remoteBookId =  lastElement["id"] as String
+        remoteBookId = lastElement["id"].toString()
         bookName = lastElement["book"] as String
         category = lastElement["category"] as String
 
@@ -163,7 +161,12 @@ class CategoryEditFragment : BaseFragment() {
         }
 
         arguments?.apply {
-            categoryRuleModel = runCatching { Gson().fromJson(getString("data"), CategoryRuleModel::class.java) }.getOrDefault(CategoryRuleModel())
+            categoryRuleModel = runCatching {
+                Gson().fromJson(
+                    getString("data"),
+                    CategoryRuleModel::class.java
+                )
+            }.getOrDefault(CategoryRuleModel())
         }
         buildUI()
 
@@ -180,20 +183,13 @@ class CategoryEditFragment : BaseFragment() {
     }
 
     private fun onClickCategory(it2: FlowElement) {
-        BookSelectorDialog(requireContext(),true) { bookModel, type ->
+        BookSelectorDialog(requireContext(), true) { bookModel, type ->
             CategorySelectorDialog(requireActivity(), bookModel.remoteId, type) { parent, child ->
                 val string: String =
                     if (parent == null) {
                         "其他"
                     } else {
-                        if (child == null) {
-                            BillUtils.getCategory(parent.name.toString())
-                        } else {
-                            BillUtils.getCategory(
-                                parent.name.toString(),
-                                child.name.toString(),
-                            )
-                        }
+                        BillTool.getCateName(parent.name!!, child?.name)
                     }
                 it2.removed().setAsWaveTextview(
                     string,
@@ -201,6 +197,7 @@ class CategoryEditFragment : BaseFragment() {
                     callback = it2.waveCallback,
                 )
                 category = string
+
             }.show(cancel = true)
         }.show(cancel = true)
     }
@@ -456,21 +453,21 @@ class CategoryEditFragment : BaseFragment() {
     private fun saveItem() {
         val map = binding.flexboxLayout.getViewMap()
         var condition = ""
-     //   var text = "若满足"
+        //   var text = "若满足"
         list = mutableListOf()
 
         for (flowElement in map) {
             if (flowElement.data.containsKey("js")) {
                 list!!.add(flowElement.data)
-            //    val t = flowElement.data["text"] as String
+                //    val t = flowElement.data["text"] as String
 
                 if (flowElement.data.containsKey("jsPre")) {
                     val pre = flowElement.data["jsPre"]
                     condition += pre
-              //      text += if (pre == "or") " 或 " else " 且 "
+                    //      text += if (pre == "or") " 或 " else " 且 "
                 }
                 condition += flowElement.data["js"]
-              //  text += t
+                //  text += t
             }
         }
         //text += "，则账本为【$bookName】，分类为【$category】。"
@@ -485,10 +482,10 @@ class CategoryEditFragment : BaseFragment() {
         val js = "if($condition){ return { book:'$bookName',category:'$category'} }"
 
         categoryRuleModel.js = js
-       // categoryRuleModel.text = text
+        // categoryRuleModel.text = text
         categoryRuleModel.element = Gson().toJson(list)
 
-     /*   categoryRuleModel.use = true*/
+        /*   categoryRuleModel.use = true*/
 
         if (categoryRuleModel.js.contains("if()")) {
             Toaster.show(R.string.useless_condition)
@@ -503,7 +500,7 @@ class CategoryEditFragment : BaseFragment() {
             return
         }
 
-      categoryRuleModel.enabled = true
+        categoryRuleModel.enabled = true
         categoryRuleModel.creator = "user"
         lifecycleScope.launch {
             CategoryRuleModel.put(categoryRuleModel)

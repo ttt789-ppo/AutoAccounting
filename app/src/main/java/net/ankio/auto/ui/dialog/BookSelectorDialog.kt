@@ -24,11 +24,16 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import kotlinx.coroutines.launch
 import net.ankio.auto.databinding.DialogBookSelectBinding
 import net.ankio.auto.ui.adapter.BookSelectorAdapter
+import net.ankio.auto.ui.api.BaseSheetDialog
 import net.ankio.auto.ui.componets.StatusPage
 import org.ezbook.server.constant.BillType
 import org.ezbook.server.db.model.BookNameModel
 
-class BookSelectorDialog(private val context: Context,private val showSelect: Boolean = false, val callback: (BookNameModel,BillType) -> Unit) :
+class BookSelectorDialog(
+    private val context: Context,
+    private val showSelect: Boolean = false,
+    val callback: (BookNameModel, BillType) -> Unit
+) :
     BaseSheetDialog(context) {
     private lateinit var binding: DialogBookSelectBinding
     private val dataItems = mutableListOf<BookNameModel>()
@@ -43,8 +48,8 @@ class BookSelectorDialog(private val context: Context,private val showSelect: Bo
         cardView = binding.cardView
         cardViewInner = recyclerView
         recyclerView.adapter =
-            BookSelectorAdapter(dataItems,showSelect) { item, type ->
-                callback(item,type)
+            BookSelectorAdapter(dataItems, showSelect) { item, type ->
+                callback(item, type)
                 this@BookSelectorDialog.dismiss()
             }
 

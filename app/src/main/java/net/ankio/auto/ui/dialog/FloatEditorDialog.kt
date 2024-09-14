@@ -17,6 +17,7 @@ package net.ankio.auto.ui.dialog
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.res.ColorStateList
 import android.view.LayoutInflater
@@ -28,83 +29,81 @@ import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.widget.TextViewCompat
 import androidx.lifecycle.lifecycleScope
-import com.hjq.toast.Toaster
+import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.ankio.auto.R
-import net.ankio.auto.app.BillUtils
+import net.ankio.auto.broadcast.LocalBroadcastHelper
 import net.ankio.auto.databinding.FloatEditorBinding
-import net.ankio.auto.exceptions.AutoServiceException
-import net.ankio.auto.ui.componets.IconView
-import net.ankio.auto.utils.DateUtils
-import net.ankio.auto.ui.utils.ListPopupUtils
+import net.ankio.auto.hooks.qianji.sync.AutoConfig
+import net.ankio.auto.storage.ConfigUtils
 import net.ankio.auto.storage.Logger
-import net.ankio.auto.storage.SpUtils
-import net.ankio.auto.models.AssetsModel
-import org.ezbook.server.db.model.AssetsMapModel
-import org.ezbook.server.db.model.BillInfoModel
-import org.ezbook.server.db.model.BookNameModel
-import net.ankio.auto.common.AccountingConfig
+import net.ankio.auto.ui.api.BaseSheetDialog
+import net.ankio.auto.ui.componets.IconView
+import net.ankio.auto.ui.scope.autoDisposeScope
+import net.ankio.auto.ui.utils.ListPopupUtils
 import net.ankio.auto.ui.utils.ResourceUtils
+import net.ankio.auto.ui.utils.ToastUtils
+import net.ankio.auto.utils.BillTool
+import net.ankio.auto.utils.DateUtils
+import org.ezbook.server.constant.AssetsType
 import org.ezbook.server.constant.BillType
 import org.ezbook.server.constant.Currency
+import org.ezbook.server.constant.Setting
+import org.ezbook.server.db.model.AssetsMapModel
+import org.ezbook.server.db.model.AssetsModel
+import org.ezbook.server.db.model.BillInfoModel
+import org.ezbook.server.db.model.BookNameModel
 import java.util.Calendar
 
 class FloatEditorDialog(
     private val context: Context,
-    private val billInfoModel: BillInfoModel,
-    private val autoAccountingConfig: AccountingConfig,
+    private var billInfoModel: BillInfoModel,
     private val float: Boolean = false,
-    private val onlyShow: Boolean = false, // 是否仅展示
-    private val onClose: ((billInfoModel: BillInfoModel) -> Unit)? = null,
-    private val onCancelClick:((billInfoModel: BillInfoModel) -> Unit)? = null,
+    private val onCancelClick: ((billInfoModel: BillInfoModel) -> Unit)? = null,
+    private val onConfirmClick: ((billInfoModel: BillInfoModel) -> Unit)? = null,
 ) :
     BaseSheetDialog(context) {
     lateinit var binding: FloatEditorBinding
     private var billTypeLevel1 = BillType.Expend
     private var billTypeLevel2 = BillType.Expend
 
+    // 原始的账单数据
     private var rawBillInfo = billInfoModel.copy()
-    private var rawChooseDebt = ""
-    private var rawChooseReimbursement = ""
 
+    private var convertBillInfo = billInfoModel.copy()
 
+    // 选择的账单ID
+    private var selectedBills = mutableListOf<String>()
 
-  /*  private val onBillUpdateEvent = { event: BillUpdateEvent ->
-        val billInfo = event.billInfoModel
-        Logger.i("onBillUpdateEvent => $billInfo")
-        if (::binding.isInitialized){
-            rawBillInfo = billInfo.copy()
-            bindUI()
-        }
-        false
-    }*/
+    // 广播接收器
+    private lateinit var broadcastReceiver: BroadcastReceiver
+
 
     override fun onCreateView(inflater: LayoutInflater): View {
-      //  EventBus.register(BillUpdateEvent::class.java, onBillUpdateEvent)
+
+        broadcastReceiver =
+            LocalBroadcastHelper.registerReceiver(LocalBroadcastHelper.ACTION_UPDATE_BILL) { action, bundle ->
+                Logger.d("接收到广播，更新账单")
+                billInfoModel =
+                    Gson().fromJson(bundle!!.getString("billInfoModel"), BillInfoModel::class.java)
+                rawBillInfo = billInfoModel.copy()
+                billTypeLevel1 = BillTool.getType(rawBillInfo.type)
+                billTypeLevel2 = rawBillInfo.type
+                bindUI()
+            }
+
         binding = FloatEditorBinding.inflate(inflater)
         cardView = binding.editorCard
 
-        Logger.d("原始账单结果 => $rawBillInfo")/*
-        billTypeLevel1 = BillType.fromInt(rawBillInfo.type)
-        billTypeLevel2 = BillType.fromInt(rawBillInfo.type)*/
-        binding.radioContainer.check(binding.radioNone.id)
-        //   billInfo.remark = BillUtils.getRemark(billInfo)
-        rawChooseDebt = binding.chooseDebt.text.toString()
-        rawChooseReimbursement = binding.chooseReimbursement.text.toString()
+        Logger.d("原始账单结果 => $rawBillInfo")
+        billTypeLevel1 = BillTool.getType(rawBillInfo.type)
+        billTypeLevel2 = rawBillInfo.type
 
         bindUI()
 
-        if (!onlyShow) {
-            bindEvents()
-        } else {
-            binding.sureButton.setOnClickListener {
-                dismiss()
-            }
-            binding.sureButton.text = context.getString(R.string.ok)
-            binding.cancelButton.visibility = View.GONE
-        }
+        bindEvents()
 
         return binding.root
     }
@@ -113,13 +112,13 @@ class FloatEditorDialog(
 
     private fun getBillData(): BillInfoModel {
         return BillInfoModel().apply {
-            this.channel = billInfoModel.channel/*
-            this.fromApp = billInfoModel.fromApp*/
+            this.channel = billInfoModel.channel
+            this.app = billInfoModel.app
             this.money = billInfoModel.money
             this.type = billInfoModel.type
             this.fee = billInfoModel.fee
-            this.bookName = billInfoModel.bookName/*
-            this.type = billTypeLevel2.value*/
+            this.bookName = billInfoModel.bookName
+            this.type = billTypeLevel2
             this.id = billInfoModel.id
             when (billTypeLevel2) {
                 BillType.Expend -> {
@@ -146,26 +145,18 @@ class FloatEditorDialog(
                     this.accountNameFrom = binding.payFrom.getText()
                     this.extendData = selectedBills.joinToString { it }
                 }
-
-                BillType.ExpendLending -> {
+                // 借出,还款
+                BillType.ExpendLending,BillType.ExpendRepayment -> {
                     this.accountNameFrom = binding.debtExpendFrom.getText()
                     this.accountNameTo = binding.debtExpendTo.getText().toString()
                 }
 
-                BillType.ExpendRepayment -> {
-                    this.accountNameFrom = binding.payFrom.getText()
-                    this.extendData = selectedBills.joinToString { it }
-                }
-
-                BillType.IncomeLending -> {
+                // 借入,收款
+                BillType.IncomeLending, BillType.IncomeRepayment -> {
                     this.accountNameFrom = binding.debtIncomeFrom.getText().toString()
                     this.accountNameTo = binding.debtIncomeTo.getText()
                 }
 
-                BillType.IncomeRepayment -> {
-                    this.accountNameFrom = binding.payFrom.getText()
-                    this.extendData = selectedBills.joinToString { it }
-                }
             }
 
             this.shopName = billInfoModel.shopName
@@ -182,29 +173,30 @@ class FloatEditorDialog(
 
     override fun dismiss() {
         super.dismiss()
-        onClose?.invoke(rawBillInfo)
-      //  EventBus.unregister(BillUpdateEvent::class.java, onBillUpdateEvent)
+
+        if (::broadcastReceiver.isInitialized)
+            LocalBroadcastHelper.unregisterReceiver(broadcastReceiver)
     }
 
     private fun bindingButtonsEvents() {
         // 关闭按钮
         binding.cancelButton.setOnClickListener {
             dismiss()
-            onCancelClick?.invoke(rawBillInfo)
+            onCancelClick?.invoke(convertBillInfo)
         }
         // 确定按钮
         binding.sureButton.setOnClickListener {
             val bill = getBillData()
 
-            rawBillInfo = bill.copy()
-            rawBillInfo.syncFromApp = 0
+            convertBillInfo = bill.copy()
+            convertBillInfo.syncFromApp = false
             Logger.d("最终账单结果 => $bill")
 
             lifecycleScope.launch {
                 runCatching {
-                   // BillInfoModel.put(bill)
-                    if (SpUtils.getBoolean("setting_book_success", true)) {
-                        Toaster.show(
+                    BillInfoModel.put(bill)
+                    if (ConfigUtils.getBoolean(Setting.SHOW_SUCCESS_POPUP, true)) {
+                        ToastUtils.info(
                             context.getString(
                                 R.string.auto_success,
                                 billInfoModel.money.toString(),
@@ -212,9 +204,9 @@ class FloatEditorDialog(
                         )
                     }
 
-                    if (rawBillInfo.cateName != bill.cateName &&
-                        SpUtils.getBoolean(
-                            "setting_auto_create_category",
+                    if (rawBillInfo.cateName != convertBillInfo.cateName &&
+                        ConfigUtils.getBoolean(
+                            Setting.AUTO_CREATE_CATEGORY,
                             false,
                         )
                     ) {
@@ -222,69 +214,53 @@ class FloatEditorDialog(
                         BillCategoryDialog(context, bill).show(float)
                     }
 
-                    if (SpUtils.getBoolean(
-                            "setting_auto_asset",
-                            false,
-                        )
-                    ) {
-                        if (listOf(
-                                binding.transferFrom,
-                                binding.payFrom,
-                                binding.debtExpendFrom,
-                            ).any { it.visibility == View.VISIBLE } && rawBillInfo.accountNameFrom != "" && rawBillInfo.accountNameFrom != bill.accountNameFrom
-                        ) {
-                            withContext(Dispatchers.IO) {
-                                if (AssetsModel.getByName(rawBillInfo.accountNameFrom) == null) {
-                                    AssetsMapModel.put(
-                                        AssetsMapModel().apply {
-                                            this.name = rawBillInfo.accountNameFrom
-                                            this.mapName = bill.accountNameFrom
-                                        },
-                                    )
-                                }
-                            }
-                        }
+                    if (ConfigUtils.getBoolean(Setting.AUTO_ASSET, false)) {
+                        val assets = AssetsModel.list()
+                        setAccountMap(assets, bill.accountNameFrom, bill.accountNameFrom)
+                        setAccountMap(assets, bill.accountNameTo, bill.accountNameTo)
+                    }
 
-                        if (listOf(
-                                binding.debtIncomeTo,
-                                binding.transferTo,
-                            ).any { it.visibility == View.VISIBLE } && rawBillInfo.accountNameTo != "" && rawBillInfo.accountNameTo != bill.accountNameTo
-                        ) {
-                            withContext(Dispatchers.IO) {
-                                if (AssetsModel.getByName(rawBillInfo.accountNameTo) == null) {
-                                    AssetsMapModel.put(
-                                        AssetsMapModel().apply {
-                                            this.name = rawBillInfo.accountNameTo
-                                            this.mapName = bill.accountNameTo
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }.onFailure {
-                    if (it is AutoServiceException) {
-                    //    EventBus.post(AutoServiceErrorEvent(it))
-                    }
+                    Logger.e("记账失败", it)
                 }
 
+
+
                 dismiss()
+                onConfirmClick?.invoke(convertBillInfo)
             }
             //   dismiss()
         }
     }
 
+
+    private suspend fun setAccountMap(assets: List<AssetsModel>, accountName:String, eqAccountName:String)= withContext(Dispatchers.IO){
+        if (assets.isEmpty()) return@withContext
+        if (accountName.isEmpty()) return@withContext
+        if (accountName == eqAccountName) return@withContext
+        val find = assets.find { it.name == accountName }
+        if (find!=null) return@withContext
+        // 只有不在资产列表里面的才需要映射
+        AssetsMapModel.put(AssetsMapModel().apply {
+            this.name = accountName
+            this.mapName = eqAccountName
+        })
+    }
+
     private fun bindingTypePopupUI() {
-        binding.priceContainer.text = billInfoModel.money.toString()/*
-        setPriceColor(billTypeLevel1.toInt())*/
+        binding.priceContainer.text = billInfoModel.money.toString()
     }
 
     private fun bindingTypePopupEvents() {
         val stringList: HashMap<String, Any> =
-            hashMapOf(
+            if (ConfigUtils.getBoolean(Setting.SETTING_ASSET_MANAGER,true))
+                hashMapOf(
+                    context.getString(R.string.float_expend) to BillType.Expend,
+                    context.getString(R.string.float_income) to BillType.Income,
+                    context.getString(R.string.float_transfer) to BillType.Transfer,
+                ) else hashMapOf(
                 context.getString(R.string.float_expend) to BillType.Expend,
                 context.getString(R.string.float_income) to BillType.Income,
-                context.getString(R.string.float_transfer) to BillType.Transfer,
             )
 
         val popupUtils =
@@ -293,11 +269,9 @@ class FloatEditorDialog(
                 binding.priceContainer,
                 stringList,
                 billTypeLevel1,
-            ) { pos, key, value ->/*
-                billInfoModel.type = (value as BillType).value
-                billTypeLevel1 = BillType.fromInt(billInfoModel.type)
-                billTypeLevel2 = BillType.fromInt(billInfoModel.type)*/
-                binding.radioContainer.check(binding.radioNone.id)
+            ) { pos, key, value ->
+                billTypeLevel1 = value as BillType
+                billTypeLevel2 = billTypeLevel1
                 bindUI()
             }
 
@@ -306,27 +280,43 @@ class FloatEditorDialog(
     }
 
     private fun bindingFeeUI() {
-        if (!autoAccountingConfig.fee) {
+        /*
+        * 如果是转账，或者没有手续费，或者没有开启手续费，那么就不显示手续费
+        * */
+
+        if (
+            !ConfigUtils.getBoolean(Setting.SETTING_FEE,false) ||
+            billTypeLevel1 != BillType.Transfer ||
+            billInfoModel.fee == 0.0
+        ) {
             binding.fee.visibility = View.GONE
-        } else {
-            binding.fee.visibility = View.VISIBLE
-            binding.fee.setText(billInfoModel.fee.toString())
+            return
         }
+        binding.fee.visibility = View.VISIBLE
+        binding.fee.setText(billInfoModel.fee.toString())
     }
 
     private fun bindingFeeEvents() {
-        // TODO 手续费需要处理弹出输入框,也许不需要处理
+        // TODO 手续费需要处理弹出输入框,也许不需要处理，等一个有手续费的数据作为参考
     }
 
+    /**
+     * 设置账本名称和图标
+     */
     private fun bindingBookNameUI() {
         lifecycleScope.launch {
-            ResourceUtils.getBookNameDrawable(billInfoModel.bookName, context, binding.bookImage)
+            ResourceUtils.getBookNameDrawable(billInfoModel.bookName, context).let {
+                binding.bookImage.setImageDrawable(it)
+            }
         }
     }
 
+    /**
+     * 绑定账本名称事件
+     */
     private fun bindingBookNameEvents() {
         binding.bookImageClick.setOnClickListener {
-            if (!autoAccountingConfig.multiBooks) return@setOnClickListener
+            if (!ConfigUtils.getBoolean(Setting.SETTING_BOOK_MANAGER,true)) return@setOnClickListener
             BookSelectorDialog(context) { book, _ ->
                 billInfoModel.bookName = book.name
                 bindingBookNameUI()
@@ -343,263 +333,25 @@ class FloatEditorDialog(
     ) {
         view.setText(name)
         lifecycleScope.launch {
-            AssetsModel.getDrawable(name, context).let {
+            ResourceUtils.getAssetDrawableFromName(name).let {
                 view.setIcon(it)
             }
         }
     }
 
-    private fun bindingPayInfoUI() {
-        binding.payInfo.visibility = View.GONE
-
-        if (!autoAccountingConfig.assetManagement || billTypeLevel1 == BillType.Transfer) {
-            // 没有资产管理
-            return
-        }
-
-        if (
-            billTypeLevel2 != BillType.ExpendLending && // 借出
-            billTypeLevel2 != BillType.IncomeLending // 借入
-        ) { // 这三个有单独的UI
-            // 收入销账、收入报销
-            binding.payInfo.visibility = View.VISIBLE
-            setAssetItem(billInfoModel.accountNameFrom, binding.payFrom)
-        }
-
-        // 如果是债务销账，则显示这个UI
-
-        if (billTypeLevel2 == BillType.ExpendRepayment || billTypeLevel2 == BillType.IncomeRepayment) {
-            binding.payInfo.visibility = View.VISIBLE
-            setAssetItem(billInfoModel.accountNameFrom, binding.payFrom)
-        }
-    }
-
-    private fun bindingPayInfoEvents() {
-        binding.payFrom.setOnClickListener {
-            if (!autoAccountingConfig.assetManagement) return@setOnClickListener
-            AssetsSelectorDialog(context) {
-                billInfoModel.accountNameFrom = it.name
-                bindingPayInfoUI()
-            }.show(float)
-        }
-    }
-
-    private fun bindingTransferInfoUI() {
-        binding.transferInfo.visibility = View.GONE
-
-        if (!autoAccountingConfig.assetManagement) {
-            return
-        }
-        // 只有转账生效
-        if (billTypeLevel1 == BillType.Transfer) {
-            binding.transferInfo.visibility = View.VISIBLE
-            setAssetItem(billInfoModel.accountNameFrom, binding.transferFrom)
-            setAssetItem(billInfoModel.accountNameTo, binding.transferTo)
-        }
-    }
-
-    private fun bindingTransferInfoEvents() {
-        binding.transferFrom.setOnClickListener {
-            if (!autoAccountingConfig.assetManagement) return@setOnClickListener
-            AssetsSelectorDialog(context) {
-                billInfoModel.accountNameFrom = it.name
-                bindingTransferInfoUI()
-            }.show(float)
-        }
-        binding.transferTo.setOnClickListener {
-            if (!autoAccountingConfig.assetManagement) return@setOnClickListener
-            AssetsSelectorDialog(context) {
-                billInfoModel.accountNameTo = it.name
-                bindingTransferInfoUI()
-            }.show(float)
-        }
-    }
-
-    // 借出
-    private fun bindingDebtExpendUI() {
-        binding.debtExpend.visibility = View.GONE
-        if (!autoAccountingConfig.assetManagement) {
-            return
-        }
-
-        if (billTypeLevel1 == BillType.Expend && billTypeLevel2 == BillType.ExpendLending) {
-            binding.debtExpend.visibility = View.VISIBLE
-            setAssetItem(billInfoModel.accountNameFrom, binding.debtExpendFrom)
-            binding.debtExpendTo.setText(billInfoModel.shopName)
-        }
-    }
-
-    private fun bindingDebtExpendEvents() {
-        binding.debtExpendFrom.setOnClickListener {
-            if (!autoAccountingConfig.assetManagement) return@setOnClickListener
-            AssetsSelectorDialog(context) {
-                billInfoModel.accountNameFrom = it.name
-                bindingDebtExpendUI()
-            }.show(float)
-        }
-    }
-
-    // 借入
-    private fun bindingDebtIncomeUI() {
-        binding.debtIncome.visibility = View.GONE
-        if (!autoAccountingConfig.assetManagement) {
-            return
-        }
-
-        if (billTypeLevel1 == BillType.Income && billTypeLevel2 == BillType.IncomeLending) {
-            binding.debtIncome.visibility = View.VISIBLE
-            setAssetItem(billInfoModel.accountNameFrom, binding.debtIncomeTo)
-            binding.debtIncomeFrom.setText(billInfoModel.shopName)
-        }
-    }
-
-    private fun bindingDebtIncomeEvents() {
-        binding.debtIncomeTo.setOnClickListener {
-            if (!autoAccountingConfig.assetManagement) return@setOnClickListener
-            AssetsSelectorDialog(context) {
-                billInfoModel.accountNameTo = it.name
-                bindingDebtIncomeUI()
-            }.show(float)
-        }
-    }
-
-    private fun bindingRadioUI() {
-        if (billTypeLevel1 == BillType.Transfer) {
-            binding.radioContainer.visibility = View.GONE
-            return
-        }
-
-        if (!autoAccountingConfig.lending && !autoAccountingConfig.reimbursement) {
-            binding.radioContainer.visibility = View.GONE
-            return
-        }
-        binding.radioContainer.visibility = View.VISIBLE
-        if (!autoAccountingConfig.reimbursement) {
-            binding.radioReimbursement.visibility = View.GONE
-        } else {
-            binding.radioReimbursement.visibility = View.VISIBLE
-        }
-
-        if (!autoAccountingConfig.lending) {
-            binding.radioDebt.visibility = View.GONE
-        } else {
-            binding.radioDebt.visibility = View.VISIBLE
-        }
-    }
-
-    // 是否为支出
-    private fun isPay(): Boolean {
-        return billTypeLevel1 == BillType.Expend
-    }
-
-    // 是否为债务
-    private fun isDebt(): Boolean {
-        return billTypeLevel2 == BillType.ExpendLending || billTypeLevel2 == BillType.IncomeLending ||
-            billTypeLevel2 == BillType.ExpendRepayment || billTypeLevel2 == BillType.IncomeRepayment
-    }
-
-    // 是否为报销
-    private fun isReimbursement(): Boolean {
-        return billTypeLevel2 == BillType.ExpendReimbursement || billTypeLevel2 == BillType.IncomeReimbursement
-    }
-
-    private fun bindingRadioEvents() {
-        binding.radioNone.setOnClickListener {
-            billTypeLevel2 = if (isPay()) BillType.Expend else BillType.Income
-            bindUI()
-        }
-        binding.radioDebt.setOnClickListener {
-            billTypeLevel2 = if (isPay()) BillType.ExpendLending else BillType.IncomeLending
-            binding.reimbursement.isChecked = false
-            bindUI()
-        }
-        binding.radioReimbursement.setOnClickListener {
-            billTypeLevel2 =
-                if (isPay()) BillType.ExpendReimbursement else BillType.IncomeReimbursement
-            bindUI()
-        }
-    }
-
-    private fun setDebt(isChecked: Boolean) {
-        billTypeLevel2 =
-            if (isChecked) {
-                if (billTypeLevel1 == BillType.Income) BillType.IncomeRepayment else BillType.ExpendRepayment
-            } else {
-                if (billTypeLevel1 == BillType.Income) BillType.IncomeLending else BillType.ExpendLending
+    /**
+     * 设置资产名称和图标
+     */
+    private fun setAssetItem(
+        name: String,
+        icon: String,
+        view: IconView,
+    ) {
+        view.setText(name)
+        lifecycleScope.launch {
+            ResourceUtils.getAssetDrawable(icon).let {
+                view.setIcon(it)
             }
-    }
-
-    private fun bindingDebtUI() {
-        binding.debtContainer.visibility = View.GONE
-        if (!autoAccountingConfig.lending ||
-            !isDebt()
-        ) {
-            return
-        }
-        setDebt(binding.reimbursement.isChecked)
-        binding.debtContainer.visibility = View.VISIBLE
-
-        binding.chooseDebt.visibility =
-            if (billTypeLevel2 == BillType.IncomeRepayment || billTypeLevel2 == BillType.ExpendRepayment) View.VISIBLE else View.GONE
-        // binding.reimbursement.isChecked = (billInfo.type == BillType.ExpendLending || billInfo.type == BillType.IncomeLending)
-
-        binding.chooseDebt.text = rawChooseDebt
-        selectedBills.clear()
-    }
-
-    private val selectedBills: ArrayList<String> = ArrayList()
-
-    private fun bindingDebtEvents() {
-        binding.reimbursement.setOnCheckedChangeListener { buttonView, isChecked ->
-            // 选择销账后，如果为
-            setDebt(isChecked)
-            bindingPayInfoUI()
-            bindingDebtExpendUI()
-            bindingDebtIncomeUI()
-            bindingDebtUI()
-            bindingCategoryUI()
-        }
-
-        fun getBillType(type: BillType): BillType {
-            return when (type) {
-                BillType.ExpendLending -> BillType.ExpendRepayment
-                BillType.IncomeLending -> BillType.IncomeRepayment
-                BillType.ExpendRepayment -> BillType.ExpendLending
-                BillType.IncomeRepayment -> BillType.IncomeLending
-                else -> BillType.ExpendLending
-            }
-        }
-
-        binding.chooseDebt.setOnClickListener {
-            BillSelectorDialog(context, getBillType(billTypeLevel2), selectedBills) {
-                binding.chooseDebt.text =
-                    context.getString(R.string.float_debt_selected, selectedBills.size)
-            }.show(float)
-        }
-    }
-
-    private fun bindingReimbursementUI() {
-        binding.chooseReimbursement.visibility = View.GONE
-        if (!autoAccountingConfig.reimbursement) {
-            return
-        }
-        if (billTypeLevel2 == BillType.IncomeReimbursement) {
-            binding.chooseReimbursement.visibility = View.VISIBLE
-        }
-
-        binding.chooseReimbursement.text = rawChooseReimbursement
-        selectedBills.clear()
-    }
-
-    private fun bindingReimbursementEvents() {
-        binding.chooseReimbursement.setOnClickListener {
-            BillSelectorDialog(context, BillType.ExpendReimbursement, selectedBills) {
-                binding.chooseReimbursement.text =
-                    context.getString(R.string.float_debt_selected, selectedBills.size)
-            }.show(float)
-        }
-        if (!autoAccountingConfig.reimbursement || billTypeLevel2 != BillType.IncomeReimbursement) {
-            return
         }
     }
 
@@ -608,9 +360,14 @@ class FloatEditorDialog(
             binding.category.visibility = View.VISIBLE
             lifecycleScope.launch {
                 val book = BookNameModel.getDefaultBook(billInfoModel.bookName)
-             /*   CategoryModel.getDrawable(billInfoModel.cateName, book.id, billInfoModel.type,context).let {
+                ResourceUtils.getCategoryDrawableByName(
+                    billInfoModel.cateName,
+                    context,
+                    book.remoteId,
+                    billTypeLevel2.name
+                ).let {
                     binding.category.setIcon(it, true)
-                }*/
+                }
             }
             binding.category.setText(billInfoModel.cateName)
         } else {
@@ -623,14 +380,15 @@ class FloatEditorDialog(
             lifecycleScope.launch {
                 val book = BookNameModel.getDefaultBook(billInfoModel.bookName)
                 withContext(Dispatchers.Main) {
-                    CategorySelectorDialog(context, book.remoteId, billTypeLevel1) { parent, child ->
-                        if (parent == null)return@CategorySelectorDialog
+                    CategorySelectorDialog(
+                        context,
+                        book.remoteId,
+                        billTypeLevel1
+                    ) { parent, child ->
+                        if (parent == null) return@CategorySelectorDialog
                         billInfoModel.cateName =
-                            BillUtils.getCategory(
-                                parent.name ?: "",
-                                child?.name,
-                                SpUtils.getBoolean("setting_category_show_parent", false),
-                            )
+                            BillTool.getCateName(parent.name ?: "", child?.name)
+
                         bindingCategoryUI()
                     }.show(float)
                 }
@@ -639,7 +397,7 @@ class FloatEditorDialog(
     }
 
     private fun bindingMoneyTypeUI() {
-        if (!autoAccountingConfig.multiCurrency) {
+        if (!ConfigUtils.getBoolean(Setting.SETTING_CURRENCY_MANAGER,false)) {
             binding.moneyType.visibility = View.GONE
             return
         }
@@ -649,7 +407,7 @@ class FloatEditorDialog(
     }
 
     private fun bindingMoneyTypeEvents() {
-        if (!autoAccountingConfig.multiCurrency) return
+        if (!ConfigUtils.getBoolean(Setting.SETTING_CURRENCY_MANAGER,false)) return
         binding.moneyType.setOnClickListener {
             val hashMap = Currency.getCurrencyMap(context)
             val popupUtils =
@@ -681,10 +439,11 @@ class FloatEditorDialog(
         val hour = calendar.get(Calendar.HOUR_OF_DAY)
         val minute = calendar.get(Calendar.MINUTE)
 
+
         // 创建并显示日期选择器
         val datePickerDialog =
             DatePickerDialog(
-                context,
+                context,//R.style.CustomDatePickerDialogTheme,
                 { _: DatePicker, selectedYear: Int, selectedMonth: Int, selectedDay: Int ->
                     // 更新日历对象的日期
                     calendar.set(Calendar.YEAR, selectedYear)
@@ -722,6 +481,7 @@ class FloatEditorDialog(
         if (float) {
             datePickerDialog.window!!.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
         }
+        //  datePickerDialog.datePicker.setBackgroundColor(surfaceColor)
         datePickerDialog.show()
     }
 
@@ -736,60 +496,340 @@ class FloatEditorDialog(
         binding.remark.setText(billInfoModel.remark)
     }
 
-    private fun bindingRemarkEvents() {
+    private fun setBillTypeLevel2(billType: BillType) {
+        if (billType == BillType.Transfer) return
+        binding.payInfo.visibility = View.GONE
+        binding.debtExpend.visibility = View.GONE
+        binding.debtIncome.visibility = View.GONE
+        binding.chooseBill.visibility = View.GONE
+        binding.category.visibility = View.GONE
+        billTypeLevel2 = billType
+
+        when (billType) {
+            BillType.Expend -> {
+                binding.payInfo.visibility = View.VISIBLE
+                setAssetItem(billInfoModel.accountNameFrom, binding.payFrom)
+                binding.category.visibility = View.VISIBLE
+            }
+            //报销
+            BillType.ExpendReimbursement -> {
+                binding.payInfo.visibility = View.VISIBLE
+                setAssetItem(billInfoModel.accountNameFrom, binding.payFrom)
+                binding.category.visibility = View.VISIBLE
+            }
+            //借出
+            BillType.ExpendLending -> {
+                binding.debtExpend.visibility = View.VISIBLE
+                binding.debtExpendToLayout.setHint(R.string.float_expend_debt)
+                setAssetItem(billInfoModel.accountNameFrom, binding.debtExpendFrom)
+                binding.debtExpendTo.setText(billInfoModel.accountNameTo.ifEmpty { billInfoModel.shopName })
+                binding.debtExpendTo.autoDisposeScope.launch {
+                    AssetsModel.list().filter { it.type == AssetsType.BORROWER }.let { assets ->
+                        withContext(Dispatchers.Main) {
+                            binding.debtExpendTo.setSimpleItems(assets.map { it.name }
+                                .toTypedArray())
+                        }
+                    }
+                }
+            }
+            //还款
+            BillType.ExpendRepayment -> {
+                binding.debtExpend.visibility = View.VISIBLE
+                //binding.chooseBill.visibility = View.VISIBLE
+                binding.debtExpendToLayout.setHint(R.string.float_income_debt)
+                setAssetItem(billInfoModel.accountNameFrom, binding.debtExpendFrom)
+                binding.debtExpendTo.setText(billInfoModel.accountNameTo.ifEmpty { billInfoModel.shopName })
+                binding.debtExpendTo.autoDisposeScope.launch {
+                    AssetsModel.list().filter { it.type == AssetsType.CREDITOR }.let { assets ->
+                        withContext(Dispatchers.Main) {
+                            binding.debtExpendTo.setSimpleItems(assets.map { it.name }
+                                .toTypedArray())
+                        }
+                    }
+                }
+            }
+
+            BillType.Income -> {
+                binding.payInfo.visibility = View.VISIBLE
+                setAssetItem(billInfoModel.accountNameFrom, binding.payFrom)
+                binding.category.visibility = View.VISIBLE
+            }
+            //借入
+            BillType.IncomeLending -> {
+                binding.debtIncome.visibility = View.VISIBLE
+                binding.debtIncomeFromLayout.setHint(R.string.float_income_debt)
+                binding.debtIncomeFrom.setText(billInfoModel.accountNameFrom.ifEmpty { billInfoModel.shopName })
+                setAssetItem(billInfoModel.accountNameTo, binding.debtIncomeTo)
+                binding.debtIncomeFrom.autoDisposeScope.launch {
+                    AssetsModel.list().filter { it.type == AssetsType.CREDITOR }.let { assets ->
+                        withContext(Dispatchers.Main) {
+                            binding.debtIncomeFrom.setSimpleItems(assets.map { it.name }
+                                .toTypedArray())
+                        }
+                    }
+                }
+            }
+            //收款
+            BillType.IncomeRepayment -> {
+                binding.debtIncome.visibility = View.VISIBLE
+                //binding.chooseBill.visibility = View.VISIBLE
+                binding.debtIncomeFromLayout.setHint(R.string.float_expend_debt)
+                binding.debtIncomeFrom.setText(billInfoModel.accountNameFrom.ifEmpty { billInfoModel.shopName })
+                setAssetItem(billInfoModel.accountNameTo, binding.debtIncomeTo)
+                binding.debtIncomeFrom.autoDisposeScope.launch {
+                    AssetsModel.list().filter { it.type == AssetsType.BORROWER }.let { assets ->
+                        withContext(Dispatchers.Main) {
+                            binding.debtIncomeFrom.setSimpleItems(assets.map { it.name }
+                                .toTypedArray())
+                        }
+                    }
+                }
+            }
+            //报销
+            BillType.IncomeReimbursement -> {
+                binding.chooseBill.visibility = View.VISIBLE
+                binding.payInfo.visibility = View.VISIBLE
+                setAssetItem(billInfoModel.accountNameFrom, binding.payFrom)
+                binding.category.visibility = View.VISIBLE
+                selectedBills.clear()
+                bindingSelectBillsUi()
+            }
+
+            BillType.Transfer -> return
+        }
+    }
+
+    private fun setBillType(billType: BillType) {
+        setPriceColor(billType)
+        billTypeLevel1 = billType
+        billTypeLevel2 = billType
+
+        binding.chipGroup.visibility = View.GONE
+        binding.payInfo.visibility = View.GONE
+        binding.transferInfo.visibility = View.GONE
+        binding.debtExpend.visibility = View.GONE
+        binding.debtIncome.visibility = View.GONE
+        binding.chooseBill.visibility = View.GONE
+
+        binding.chipLend.visibility = View.GONE
+        binding.chipBorrow.visibility = View.GONE
+
+        binding.chipGroup.clearCheck()
+
+
+        binding.fee.visibility = View.GONE
+
+        setAssetItem("", binding.payFrom)
+        setAssetItem("", binding.transferFrom)
+        setAssetItem("", binding.transferTo)
+        setAssetItem("", binding.debtExpendFrom)
+        binding.debtExpendTo.setText("")
+        binding.debtIncomeFrom.setText("")
+        setAssetItem("", binding.debtIncomeTo)
+        selectedBills.clear()
+        binding.category.visibility = View.GONE
+        when (billType) {
+            BillType.Expend -> {
+                binding.chipRepayment.text = context.getString(R.string.expend_repayment)
+                binding.chipGroup.visibility = View.VISIBLE
+                binding.chipLend.visibility = View.VISIBLE
+                binding.category.visibility = View.VISIBLE
+                setBillTypeLevel2(billType)
+            }
+
+            BillType.Income -> {
+                binding.chipRepayment.text = context.getString(R.string.income_repayment)
+                binding.chipGroup.visibility = View.VISIBLE
+                binding.chipBorrow.visibility = View.VISIBLE
+                binding.category.visibility = View.VISIBLE
+                setBillTypeLevel2(billType)
+            }
+
+            BillType.Transfer -> {
+                binding.transferInfo.visibility = View.VISIBLE
+                setAssetItem(billInfoModel.accountNameFrom, binding.transferFrom)
+                setAssetItem(billInfoModel.accountNameTo, binding.transferTo)
+            }
+
+            BillType.ExpendReimbursement -> return
+            BillType.ExpendLending -> return
+            BillType.ExpendRepayment -> return
+            BillType.IncomeLending -> return
+            BillType.IncomeRepayment -> return
+            BillType.IncomeReimbursement -> return
+        }
+
+
+        if (!ConfigUtils.getBoolean(Setting.SETTING_ASSET_MANAGER,true)) {
+            binding.chipLend.visibility = View.GONE
+            binding.chipBorrow.visibility = View.GONE
+            binding.chipRepayment.visibility = View.GONE
+            binding.payInfo.visibility = View.GONE
+            binding.transferInfo.visibility = View.GONE
+            binding.debtExpend.visibility = View.GONE
+            binding.debtIncome.visibility = View.GONE
+        }
+
+        if (!ConfigUtils.getBoolean(Setting.SETTING_DEBT,true)) {
+            binding.chipLend.visibility = View.GONE
+            binding.chipBorrow.visibility = View.GONE
+            binding.chipRepayment.visibility = View.GONE
+        }
+
+        if (!ConfigUtils.getBoolean(Setting.SETTING_REIMBURSEMENT,true)) {
+            binding.chipReimbursement.visibility = View.GONE
+        }
+    }
+
+    private fun bindingChipGroupEvents() {
+        binding.chipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            val check = checkedIds.firstOrNull()
+            if (check == null) {
+                setBillTypeLevel2(billTypeLevel1)
+                return@setOnCheckedStateChangeListener
+            }
+            when (check) {
+                R.id.chipReimbursement -> {
+                    if (billTypeLevel1 == BillType.Expend) {
+                        setBillTypeLevel2(BillType.ExpendReimbursement)
+                    } else {
+                        setBillTypeLevel2(BillType.IncomeReimbursement)
+                    }
+
+                }
+
+                R.id.chipLend -> {
+                    setBillTypeLevel2(BillType.ExpendLending)
+                }
+
+                R.id.chipBorrow -> {
+                    setBillTypeLevel2(BillType.IncomeLending)
+                }
+
+                R.id.chipRepayment -> {
+                    if (billTypeLevel1 == BillType.Expend) {
+                        setBillTypeLevel2(BillType.ExpendRepayment)
+                    } else {
+                        setBillTypeLevel2(BillType.IncomeRepayment)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun bindingSelectBillsUi() {
+        if (selectedBills.isEmpty()) {
+            binding.chooseBill.setText(R.string.float_choose_bill)
+        } else {
+            binding.chooseBill.text =
+                context.getString(R.string.float_choose_bills, selectedBills.size)
+        }
+    }
+
+    private fun bindingSelectBillsEvents() {
+        binding.chooseBill.setOnClickListener {
+
+            // 收入对应的报销
+
+            BillSelectorDialog(context, selectedBills) {
+                bindingSelectBillsUi()
+            }.show(float)
+        }
     }
 
     private fun bindUI() {
-        //   Logger.e("bindUI => $billInfo",Throwable())
 
+        setBillType(billTypeLevel1)
+        binding.chipGroup.clearCheck()
+        if (billTypeLevel1 != rawBillInfo.type) {
+            binding.chipGroup.check(when (rawBillInfo.type) {
+                BillType.ExpendReimbursement -> R.id.chipReimbursement
+                BillType.ExpendLending -> R.id.chipLend
+                BillType.ExpendRepayment -> R.id.chipRepayment
+                BillType.IncomeLending -> R.id.chipBorrow
+                BillType.IncomeRepayment -> R.id.chipRepayment
+                BillType.IncomeReimbursement -> R.id.chipReimbursement
+                else -> -1
+            })
+            setBillTypeLevel2(rawBillInfo.type)
+        }
+
+        selectedBills = billInfoModel.extendData.split(",").toMutableList()
         bindingBookNameUI()
         bindingTypePopupUI()
         bindingFeeUI()
-        bindingRadioUI()
-
-        bindingPayInfoUI()
-        bindingTransferInfoUI()
-        bindingDebtExpendUI()
-        bindingDebtIncomeUI()
-        bindingDebtUI()
-        bindingReimbursementUI()
-
         bindingCategoryUI()
         bindingMoneyTypeUI()
         bindingTimeUI()
         bindingRemarkUI()
+
+
+        bindChangeAssets()
+        bindingSelectBillsUi()
+
     }
 
+    private fun bindChangeAssets() {
+        binding.payFrom.setOnClickListener {
+            AssetsSelectorDialog(context) { model ->
+                setAssetItem(model.name, model.icon, binding.payFrom)
+            }.show(float = float)
+        }
+        binding.transferFrom.setOnClickListener {
+            AssetsSelectorDialog(context) { model ->
+                setAssetItem(model.name, model.icon, binding.transferFrom)
+            }.show(float = float)
+        }
+
+        binding.transferTo.setOnClickListener {
+            AssetsSelectorDialog(context) { model ->
+                setAssetItem(model.name, model.icon, binding.transferTo)
+            }.show(float = float)
+        }
+
+        binding.debtExpendFrom.setOnClickListener {
+            AssetsSelectorDialog(context) { model ->
+                setAssetItem(model.name, model.icon, binding.debtExpendFrom)
+            }.show(float = float)
+        }
+
+        binding.debtIncomeTo.setOnClickListener {
+            AssetsSelectorDialog(context) { model ->
+                setAssetItem(model.name, model.icon, binding.debtIncomeTo)
+            }.show(float = float)
+        }
+    }
+
+    /**
+     * 绑定事件
+     */
     private fun bindEvents() {
         bindingBookNameEvents()
         bindingTypePopupEvents()
         bindingFeeEvents()
-        bindingRadioEvents()
-
-        bindingPayInfoEvents()
-        bindingTransferInfoEvents()
-        bindingDebtExpendEvents()
-        bindingDebtIncomeEvents()
-        bindingDebtEvents()
-        bindingReimbursementEvents()
 
         bindingCategoryEvents()
         bindingMoneyTypeEvents()
         bindingTimeEvents()
-        bindingRemarkEvents()
         bindingButtonsEvents()
+        bindingChipGroupEvents()
+
+        bindingSelectBillsEvents()
     }
 
-    private fun setPriceColor(position: Int) {
+    /**
+     * 设置价格颜色
+     */
+    private fun setPriceColor(billType: BillType) {
         val drawableRes =
-            when (position) {
-                0 -> R.drawable.float_minus
-                1 -> R.drawable.float_add
-                2 -> R.drawable.float_round
+            when (billType) {
+                BillType.Expend -> R.drawable.float_minus
+                BillType.Income -> R.drawable.float_add
+                BillType.Transfer -> R.drawable.float_round
                 else -> R.drawable.float_minus
             }
 
-        val tintRes = BillUtils.getColor(position)
+        val tintRes = BillTool.getColor(billType)
 
         val drawable = AppCompatResources.getDrawable(context, drawableRes)
         val tint = ColorStateList.valueOf(ContextCompat.getColor(context, tintRes))

@@ -20,6 +20,7 @@ import org.ezbook.server.db.dao.AppDataDao
 import org.ezbook.server.db.dao.AssetMapDao
 import org.ezbook.server.db.dao.AssetsDao
 import org.ezbook.server.db.dao.BillInfoDao
+import org.ezbook.server.db.dao.BookBillDao
 import org.ezbook.server.db.dao.BookNameDao
 import org.ezbook.server.db.dao.CategoryDao
 import org.ezbook.server.db.dao.CategoryMapDao
@@ -30,14 +31,15 @@ import org.ezbook.server.db.dao.SettingDao
 import org.ezbook.server.db.model.AppDataModel
 import org.ezbook.server.db.model.AssetsMapModel
 import org.ezbook.server.db.model.AssetsModel
-import org.ezbook.server.db.model.LogModel
-import org.ezbook.server.db.model.RuleModel
-import org.ezbook.server.db.model.SettingModel
 import org.ezbook.server.db.model.BillInfoModel
+import org.ezbook.server.db.model.BookBillModel
 import org.ezbook.server.db.model.BookNameModel
 import org.ezbook.server.db.model.CategoryMapModel
 import org.ezbook.server.db.model.CategoryModel
 import org.ezbook.server.db.model.CategoryRuleModel
+import org.ezbook.server.db.model.LogModel
+import org.ezbook.server.db.model.RuleModel
+import org.ezbook.server.db.model.SettingModel
 
 @Database(
     entities = [
@@ -50,17 +52,18 @@ import org.ezbook.server.db.model.CategoryRuleModel
         BookNameModel::class,
         CategoryModel::class,
         AssetsMapModel::class,
-    CategoryMapModel::class,
-    CategoryRuleModel::class
-               ],
-    version = 1,
+        CategoryMapModel::class,
+        CategoryRuleModel::class,
+        BookBillModel::class
+    ],
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun logDao(): LogDao
     abstract fun ruleDao(): RuleDao
     abstract fun settingDao(): SettingDao
-    abstract fun dataDao():AppDataDao
+    abstract fun dataDao(): AppDataDao
     abstract fun billInfoDao(): BillInfoDao
     abstract fun assetsDao(): AssetsDao
     abstract fun bookNameDao(): BookNameDao
@@ -68,4 +71,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun assetsMapDao(): AssetMapDao
     abstract fun categoryMapDao(): CategoryMapDao
     abstract fun categoryRuleDao(): CategoryRuleDao
+    abstract fun bookBillDao(): BookBillDao
 }

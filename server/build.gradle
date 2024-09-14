@@ -49,12 +49,12 @@ dependencies {
     annotationProcessor "androidx.room:room-compiler:$room_version" // 如果使用 Kotlin，使用 kapt
     kapt "androidx.room:room-compiler:$room_version"
 
-    // 可选 - 支持 Kotlin 协程
-    implementation "androidx.room:room-ktx:$room_version"
 
     //okhttp
     implementation libs.okhttp
 
     // rhino
     implementation 'org.mozilla:rhino:1.7.13'
+
+    debugImplementation project(":data")
 }

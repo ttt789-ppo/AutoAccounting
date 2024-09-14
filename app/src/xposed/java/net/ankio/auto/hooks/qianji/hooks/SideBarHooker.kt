@@ -35,12 +35,16 @@ import net.ankio.auto.core.api.PartHooker
 import net.ankio.auto.core.ui.ColorUtils
 import net.ankio.auto.core.ui.ViewUtils
 import net.ankio.auto.databinding.MenuItemBinding
-import net.ankio.auto.hooks.qianji.tools.AssetsUtils
-import net.ankio.auto.hooks.qianji.tools.BookUtils
-import net.ankio.auto.hooks.qianji.tools.CategoryUtils
+import net.ankio.auto.hooks.qianji.sync.AssetsUtils
+import net.ankio.auto.hooks.qianji.sync.BaoXiaoUtils
+import net.ankio.auto.hooks.qianji.sync.BookUtils
+import net.ankio.auto.hooks.qianji.sync.CategoryUtils
+import net.ankio.auto.hooks.qianji.sync.SyncBillUtils
 
 
-class SideBarHooker : PartHooker{
+class SideBarHooker : PartHooker() {
+
+
     override fun hook(
         hookerManifest: HookerManifest,
         application: Application?,
@@ -48,17 +52,17 @@ class SideBarHooker : PartHooker{
     ) {
         this.hookerManifest = hookerManifest
         val clazz = classLoader.loadClass("com.mutangtech.qianji.ui.main.MainActivity")
-       XposedHelpers.findAndHookMethod(
-           clazz,
-           "onCreate",
-           android.os.Bundle::class.java,
-           object : XC_MethodHook() {
-               override fun afterHookedMethod(param: MethodHookParam) {
-                   val activity = param.thisObject as Activity
-                   hookMenu(activity, classLoader)
-               }
-           }
-       )
+        XposedHelpers.findAndHookMethod(
+            clazz,
+            "onCreate",
+            android.os.Bundle::class.java,
+            object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    val activity = param.thisObject as Activity
+                    hookMenu(activity, classLoader)
+                }
+            }
+        )
 
         XposedHelpers.findAndHookMethod(
             clazz,
@@ -85,7 +89,7 @@ class SideBarHooker : PartHooker{
         classLoader: ClassLoader?
     ) {
         if (!::hookerManifest.isInitialized) {
-           return
+            return
         }
         var hooked = false
         val clazz = classLoader!!.loadClass("com.mutangtech.qianji.ui.maindrawer.MainDrawerLayout")
@@ -101,7 +105,12 @@ class SideBarHooker : PartHooker{
                     hooked = true
                     // 调用 findViewById 并转换为 TextView
                     val linearLayout =
-                        ViewUtils.getViewById("com.mutangtech.qianji.R\$id",obj, classLoader, "main_drawer_content_layout") as LinearLayout
+                        ViewUtils.getViewById(
+                            "com.mutangtech.qianji.R\$id",
+                            obj,
+                            classLoader,
+                            "main_drawer_content_layout"
+                        ) as LinearLayout
                     runCatching {
                         hookerManifest.attachResource(activity)
                         // 找到了obj里面的name字段
@@ -122,13 +131,15 @@ class SideBarHooker : PartHooker{
      * 检查服务状态
      */
     private suspend fun checkServerStatus(activity: Activity) = withContext(Dispatchers.IO) {
-        if(!::hookerManifest.isInitialized || !::itemMenuBinding.isInitialized){
+        if (!::hookerManifest.isInitialized || !::itemMenuBinding.isInitialized) {
             return@withContext
         }
-        val background =  if (ServerInfo.isServerStart()) R.drawable.status_running else R.drawable.status_stopped
+        val background =
+            if (ServerInfo.isServerStart()) R.drawable.status_running else R.drawable.status_stopped
 
-        withContext(Dispatchers.Main){
-             itemMenuBinding.serviceStatus.background = AppCompatResources.getDrawable(activity,background)
+        withContext(Dispatchers.Main) {
+            itemMenuBinding.serviceStatus.background =
+                AppCompatResources.getDrawable(activity, background)
         }
     }
 
@@ -149,17 +160,13 @@ class SideBarHooker : PartHooker{
         itemMenuBinding.title.text = context.getString(R.string.app_name)
         itemMenuBinding.title.setTextColor(mainColor)
 
-        itemMenuBinding.version.text = BuildConfig.VERSION_NAME.replace(" - Xposed","")
+        itemMenuBinding.version.text = BuildConfig.VERSION_NAME.replace(" - Xposed", "")
         itemMenuBinding.version.setTextColor(subColor)
-
         itemMenuBinding.root.setOnClickListener {
-            //打开自动记账
-            val intent =
-                context.packageManager.getLaunchIntentForPackage(BuildConfig.APPLICATION_ID)
-            if (intent != null) {
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
-            }
+            App.toast("强制同步数据中...")
+            //强制同步
+            last = 0L
+            syncData2Auto(context)
         }
 
         linearLayout.addView(itemMenuBinding.root)
@@ -169,15 +176,23 @@ class SideBarHooker : PartHooker{
         }
     }
 
+    private var last = 0L
+
     /**
      * 同步数据到自动记账
      */
-    fun syncData2Auto(context: Activity){
-
+    fun syncData2Auto(context: Activity) {
+        if (System.currentTimeMillis() - last < 1000 * 30) {
+            return
+        }
+        last = System.currentTimeMillis()
         App.launch {
             AssetsUtils(hookerManifest, context.classLoader).syncAssets()
-            val books = BookUtils(hookerManifest, context.classLoader,context).syncBooks()
-            CategoryUtils(hookerManifest, context.classLoader,books).syncCategory()
+            val books = BookUtils(hookerManifest, context.classLoader, context).syncBooks()
+            CategoryUtils(hookerManifest, context.classLoader, books).syncCategory()
+            BaoXiaoUtils(hookerManifest, context.classLoader).syncBaoXiao()
+            // LoanUtils(hookerManifest, context.classLoader).syncLoan()
+            SyncBillUtils(hookerManifest, context.classLoader).sync(context)
         }
     }
 

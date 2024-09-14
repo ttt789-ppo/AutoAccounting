@@ -22,15 +22,26 @@ import de.robv.android.xposed.XposedHelpers
 /**
  * Xposed hooker
  */
-object Hooker{
-    fun hookOnce(clazz: Class<*>, method: String, vararg parameterTypes: Class<*>, hook: (param: MethodHookParam) -> Unit) {
+object Hooker {
+    fun hookOnce(
+        clazz: Class<*>,
+        method: String,
+        vararg parameterTypes: Class<*>,
+        hook: (param: MethodHookParam) -> Boolean
+    ) {
         var unhook: XC_MethodHook.Unhook? = null
         // 一次性hook
-        unhook =  XposedHelpers.findAndHookMethod(clazz, method, *parameterTypes, object : XC_MethodHook() {
-            override fun afterHookedMethod(param: MethodHookParam) {
-                hook(param)
-                unhook?.unhook()
-            }
-        })
+        unhook = XposedHelpers.findAndHookMethod(
+            clazz,
+            method,
+            *parameterTypes,
+            object : XC_MethodHook() {
+                override fun afterHookedMethod(param: MethodHookParam) {
+                    if (hook(param)) {
+                        unhook?.unhook()
+                    }
+                }
+            })
     }
+
 }

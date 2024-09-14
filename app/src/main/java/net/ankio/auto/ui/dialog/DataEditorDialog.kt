@@ -20,14 +20,15 @@ import android.view.LayoutInflater
 import android.view.View
 import com.google.gson.Gson
 import com.google.gson.JsonElement
-import com.hjq.toast.Toaster
 import net.ankio.auto.R
 import net.ankio.auto.databinding.DialogDataEditorBinding
+import net.ankio.auto.ui.api.BaseSheetDialog
+import net.ankio.auto.ui.utils.ToastUtils
 
 class DataEditorDialog(
     context: Context,
     private val data: String,
-    private val callback: (keyword: String) -> Unit,
+    private val callback: (result: String) -> Unit,
 ) :
     BaseSheetDialog(context) {
     private lateinit var binding: DialogDataEditorBinding
@@ -41,7 +42,7 @@ class DataEditorDialog(
             runCatching {
                 Gson().fromJson(data, JsonElement::class.java)
             }.onFailure {
-                Toaster.show(R.string.json_error)
+                ToastUtils.info(R.string.json_error)
             }.onSuccess {
                 callback(binding.data.text.toString())
                 dismiss()
@@ -60,12 +61,12 @@ class DataEditorDialog(
             val editorData = binding.data.text.toString()
 
             if (keyword.isEmpty() || replaceData.isEmpty()) {
-                Toaster.show(R.string.no_empty)
+                ToastUtils.error(R.string.no_empty)
                 return@setOnClickListener
             }
 
             if (!editorData.contains(keyword)) {
-                Toaster.show(R.string.no_replace)
+                ToastUtils.error(R.string.no_replace)
                 return@setOnClickListener
             }
             binding.data.setText(editorData.replace(keyword, replaceData))

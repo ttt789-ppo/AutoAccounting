@@ -27,26 +27,31 @@ import com.quickersilver.themeengine.ThemeChooserDialogBuilder
 import com.quickersilver.themeengine.ThemeEngine
 import com.quickersilver.themeengine.ThemeMode
 import kotlinx.coroutines.launch
+import net.ankio.auto.App
+import net.ankio.auto.BuildConfig
 import net.ankio.auto.R
 import net.ankio.auto.constant.ItemType
 import net.ankio.auto.databinding.FragmentSystemSettingBinding
 import net.ankio.auto.exceptions.PermissionException
 import net.ankio.auto.setting.SettingItem
-import net.ankio.auto.setting.SettingUtils
 import net.ankio.auto.storage.BackupUtils
+import net.ankio.auto.storage.ConfigUtils
 import net.ankio.auto.storage.Logger
-import net.ankio.auto.storage.SpUtils
 import net.ankio.auto.ui.activity.MainActivity
 import net.ankio.auto.ui.api.BaseActivity
 import net.ankio.auto.ui.api.BaseFragment
 import net.ankio.auto.ui.utils.LoadingUtils
-import net.ankio.auto.utils.AppUtils
+import net.ankio.auto.update.UpdateChannel
+import net.ankio.auto.update.UpdateType
 import net.ankio.auto.utils.LanguageUtils
+import org.ezbook.server.constant.Setting
+import org.ezbook.server.db.model.SettingModel
+import net.ankio.auto.setting.SettingUtils as SettingItemUtils
 
 class SystemSettingFragment : BaseFragment() {
     private lateinit var binding: FragmentSystemSettingBinding
 
-    private lateinit var settingRenderUtils: SettingUtils
+    private lateinit var settingRenderUtils: SettingItemUtils
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -56,7 +61,7 @@ class SystemSettingFragment : BaseFragment() {
         binding = FragmentSystemSettingBinding.inflate(layoutInflater)
         val settingItems = app(requireContext(), this)
         settingRenderUtils =
-            SettingUtils(
+            SettingItemUtils(
                 requireActivity() as BaseActivity,
                 binding.container,
                 layoutInflater,
@@ -78,7 +83,6 @@ class SystemSettingFragment : BaseFragment() {
     }
 
 
-
     /**
      * 获取App设置项
      */
@@ -92,7 +96,7 @@ class SystemSettingFragment : BaseFragment() {
             SettingItem(
                 title = R.string.setting_analysis,
                 subTitle = R.string.setting_analysis_desc,
-                key = "setting_analysis",
+                key = Setting.SEND_ERROR_REPORT,
                 type = ItemType.SWITCH,
                 default = true,
                 icon = R.drawable.setting2_icon_anonymous,
@@ -115,7 +119,7 @@ class SystemSettingFragment : BaseFragment() {
             // 皮肤
             SettingItem(R.string.setting_skin),
             SettingItem(
-                regex = "setting_use_system=false",
+                regex = "${Setting.USE_SYSTEM_SKIN}=false",
                 title = R.string.setting_theme,
                 type = ItemType.COLOR,
                 icon = R.drawable.setting2_icon_theme,
@@ -171,7 +175,7 @@ class SystemSettingFragment : BaseFragment() {
                 },
             ),
             SettingItem(
-                variable = "setting_use_system",
+                variable = Setting.USE_SYSTEM_SKIN,
                 title = R.string.setting_use_system_theme,
                 type = ItemType.SWITCH,
                 icon = R.drawable.setting2_icon_system_theme,
@@ -185,7 +189,7 @@ class SystemSettingFragment : BaseFragment() {
             ),
             SettingItem(
                 title = R.string.setting_use_round_style,
-                key = "setting_use_round_style",
+                key = Setting.USE_ROUND_STYLE,
                 icon = R.drawable.setting2_icon_round_theme,
                 type = ItemType.SWITCH,
             ),
@@ -193,20 +197,20 @@ class SystemSettingFragment : BaseFragment() {
             SettingItem(R.string.setting_backup),
             // 备份方式二选一，本地或者Webdav
             SettingItem(
-                variable = "setting_use_webdav",
+                variable = Setting.USE_WEBDAV,
                 title = R.string.setting_use_webdav,
                 icon = R.drawable.setting2_icon_backup,
-                key = "setting_use_webdav",
+                key = Setting.USE_WEBDAV,
                 default = false,
                 type = ItemType.SWITCH,
             ),
             SettingItem(
-                regex = "setting_use_webdav=false",
+                regex = "${Setting.USE_WEBDAV}=false",
                 title = R.string.setting_backup_path,
                 icon = R.drawable.setting2_icon_dir,
                 type = ItemType.TEXT,
                 onGetKeyValue = {
-                    val uri = SpUtils.getString("backup_uri", "")
+                    val uri = ConfigUtils.getString(Setting.LOCAL_BACKUP_PATH, "")
                     if (uri.isNotEmpty()) {
                         runCatching {
                             Uri.parse(uri).path
@@ -220,7 +224,7 @@ class SystemSettingFragment : BaseFragment() {
                 },
             ),
             SettingItem(
-                regex = "setting_use_webdav=false",
+                regex = "${Setting.USE_WEBDAV}=false",
                 title = R.string.setting_backup_2_local,
                 //    subTitle = R.string.setting_backup_2_local_desc,
                 type = ItemType.TEXT,
@@ -236,6 +240,7 @@ class SystemSettingFragment : BaseFragment() {
                             Toaster.show(R.string.backup_success)
                             loading.close()
                         }.onFailure {
+                            Logger.e("备份失败", it)
                             // 失败请求权限
                             if (it is PermissionException) {
                                 BackupUtils.requestPermission(activity as MainActivity)
@@ -247,7 +252,7 @@ class SystemSettingFragment : BaseFragment() {
                 },
             ),
             SettingItem(
-                regex = "setting_use_webdav=false",
+                regex = "${Setting.USE_WEBDAV}=false",
                 title = R.string.setting_restore_2_local,
                 icon = R.drawable.setting2_icon_from_local,
                 //  subTitle = R.string.setting_restore_2_local_desc,
@@ -257,29 +262,29 @@ class SystemSettingFragment : BaseFragment() {
                 },
             ),
             SettingItem(
-                regex = "setting_use_webdav=true",
+                regex = "${Setting.USE_WEBDAV}=true",
                 title = R.string.setting_webdav_host,
-                key = "setting_webdav_host",
+                key = Setting.WEBDAV_HOST,
                 default = "https://dav.jianguoyun.com/dav/",
                 type = ItemType.INPUT,
             ),
             SettingItem(
-                regex = "setting_use_webdav=true",
+                regex = "${Setting.USE_WEBDAV}=true",
                 title = R.string.setting_webdav_username,
-                key = "setting_webdav_username",
+                key = Setting.WEBDAV_USER,
                 default = "",
                 type = ItemType.INPUT,
             ),
             SettingItem(
-                regex = "setting_use_webdav=true",
+                regex = "${Setting.USE_WEBDAV}=true",
                 title = R.string.setting_webdav_password,
                 subTitle = R.string.setting_webdav_password_desc,
-                key = "setting_webdav_password",
+                key = Setting.WEBDAV_PASSWORD,
                 default = "",
                 type = ItemType.INPUT,
             ),
             SettingItem(
-                regex = "setting_use_webdav=true",
+                regex = "${Setting.USE_WEBDAV}=true",
                 title = R.string.setting_backup_2_webdav,
                 icon = R.drawable.setting2_icon_webdav_upload,
                 //     subTitle = R.string.setting_backup_2_webdav_desc,
@@ -297,7 +302,7 @@ class SystemSettingFragment : BaseFragment() {
                 },
             ),
             SettingItem(
-                regex = "setting_use_webdav=true",
+                regex = "${Setting.USE_WEBDAV}=true",
                 title = R.string.setting_restore_2_webdav,
                 icon = R.drawable.setting2_icon_webdav_download,
                 //     subTitle = R.string.setting_backup_2_webdav_desc,
@@ -317,37 +322,39 @@ class SystemSettingFragment : BaseFragment() {
             // 更新
             SettingItem(R.string.setting_update),
             SettingItem(
-                title = R.string.app_url,
-                type = ItemType.INPUT,
-                onGetKeyValue = {
-                    //  UpdateUtils.getUrl()
-                },
-                onSavedValue = { value, activity ->
-                    //  UpdateUtils.setUrl(value as String)
-                },
+                title = R.string.setting_update_channel,
+                key = Setting.UPDATE_CHANNEL,
+                icon = R.drawable.setting2_icon_update_channel,
+                type = ItemType.TEXT,
+                default = UpdateChannel.Github.name,
+                selectList = hashMapOf(
+                    context.getString(R.string.update_channel_github) to UpdateChannel.Github.name,
+                    context.getString(R.string.update_channel_cloud) to UpdateChannel.Cloud.name,
+                ),
             ),
             SettingItem(
                 title = R.string.setting_update_type,
-                key = "setting_update_type",
+                key = Setting.CHECK_UPDATE_TYPE,
                 icon = R.drawable.setting2_icon_update,
                 type = ItemType.TEXT,
-                default = 1,
+                default = UpdateType.switchDefaultUpdate(),
                 selectList =
                 hashMapOf(
-                    context.getString(R.string.stable_version) to 0,
-                    context.getString(R.string.continuous_build_version) to 1,
+                    context.getString(R.string.version_stable) to UpdateType.Stable.name,
+                    context.getString(R.string.version_beta) to UpdateType.Beta.name,
+                    context.getString(R.string.version_canary) to UpdateType.Canary.name,
                 ),
             ),
             SettingItem(
                 title = R.string.setting_app,
-                key = "setting_app",
+                key = Setting.CHECK_APP_UPDATE,
                 default = true,
                 icon = R.drawable.setting2_icon_rule,
                 type = ItemType.SWITCH,
             ),
             SettingItem(
                 title = R.string.setting_rule,
-                key = "setting_rule",
+                key = Setting.CHECK_RULE_UPDATE,
                 default = true,
                 icon = R.drawable.setting2_icon_category,
                 type = ItemType.SWITCH,
@@ -357,13 +364,16 @@ class SystemSettingFragment : BaseFragment() {
             SettingItem(
                 title = R.string.setting_debug,
                 subTitle = R.string.debug_msg,
-                key = "setting_debug",
+                key = Setting.DEBUG_MODE,
                 icon = R.drawable.setting2_icon_debug,
                 type = ItemType.SWITCH,
                 onSavedValue = { value, _ ->
-                    AppUtils.setDebug(value as Boolean)
+                    ConfigUtils.putBoolean(Setting.DEBUG_MODE, value as Boolean)
+                    App.launch {
+                        SettingModel.set(Setting.DEBUG_MODE, value.toString())
+                    }
                 },
-                default = false,
+                default = BuildConfig.DEBUG,
             ),
         )
     }

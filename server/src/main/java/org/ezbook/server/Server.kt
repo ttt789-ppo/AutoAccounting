@@ -16,17 +16,12 @@
 package org.ezbook.server
 
 import android.content.Context
-import android.net.TrafficStats
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
@@ -46,10 +41,10 @@ import org.nanohttpd.protocols.http.response.Status
 import java.net.ConnectException
 
 
-class Server(context:Context) {
+class Server(context: Context) {
 
     private val port = 52045
-    private val server = ServerHttp(port,context)
+    private val server = ServerHttp(port, context)
 
     init {
         Db.init(context)
@@ -58,7 +53,7 @@ class Server(context:Context) {
     /**
      * 启动服务
      */
-    fun startServer(){
+    fun startServer() {
         server.start(SOCKET_READ_TIMEOUT, false)
         println("Server started on port $port")
 
@@ -66,8 +61,7 @@ class Server(context:Context) {
     }
 
 
-
-    fun stopServer(){
+    fun stopServer() {
         server.stop()
     }
 
@@ -82,17 +76,38 @@ class Server(context:Context) {
          */
         fun reqData(session: IHTTPSession): String {
             val contentLength: Int = session.headers["content-length"]?.toInt() ?: 0
-            val buffer = ByteArray(contentLength)
-            session.inputStream.read(buffer, 0, contentLength)
-            // 将字节数组转换为字符串
-           return String(buffer)
 
+            // 限制请求体的最大长度，防止恶意请求
+            val maxContentLength = 10 * 1024 * 1024 // 10 MB
+            if (contentLength > maxContentLength) {
+                throw IllegalArgumentException("Request body is too large")
+            }
+
+            val buffer = ByteArray(contentLength)
+            var totalBytesRead = 0
+
+            while (totalBytesRead < contentLength) {
+                val bytesRead = session.inputStream.read(buffer, totalBytesRead, contentLength - totalBytesRead)
+                if (bytesRead == -1) {
+                    // 如果流结束但数据不完整，抛出异常
+                    throw IllegalArgumentException("Content-Length mismatch: expected $contentLength, but got $totalBytesRead")
+                }
+                totalBytesRead += bytesRead
+            }
+
+            // 再次检查实际读取的字节数是否匹配 Content-Length
+            if (totalBytesRead != contentLength) {
+                throw IllegalArgumentException("Content-Length mismatch: expected $contentLength, but got $totalBytesRead")
+            }
+
+            return String(buffer, 0, totalBytesRead)
         }
+
 
         /**
          * 返回json
          */
-        fun json(code:Int = 200,msg:String = "OK",data:Any? = null): Response {
+        fun json(code: Int = 200, msg: String = "OK", data: Any? = null): Response {
             val jsonObject = JsonObject()
             jsonObject.addProperty("code", code)
             jsonObject.addProperty("msg", msg)
@@ -105,57 +120,57 @@ class Server(context:Context) {
         }
 
 
-
         /**
          * 发送请求
          */
-       suspend fun request(path:String,json:String = ""):String? = withContext(Dispatchers.IO){
-           runCatching {
-               val uri = "http://localhost:52045/$path"
-               // 创建一个OkHttpClient对象
-               val client = OkHttpClient()
-               // set as json post
-               val body: RequestBody = json
-                   .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-               // 创建一个Request
-               val request = Request.Builder().url(uri).post(body)
-                   .addHeader("Content-Type", "application/json").build()
-               // 发送请求获取响应
-               val response = client.newCall(request).execute()
-               // 如果请求成功
-               response.body?.string()
+        suspend fun request(path: String, json: String = ""): String? =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val uri = "http://localhost:52045/$path"
+                    // 创建一个OkHttpClient对象
+                    val client = OkHttpClient()
+                    // set as json post
+                    val body: RequestBody = json
+                        .toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+                    // 创建一个Request
+                    val request = Request.Builder().url(uri).post(body)
+                        .addHeader("Content-Type", "application/json").build()
+                    // 发送请求获取响应
+                    val response = client.newCall(request).execute()
+                    // 如果请求成功
+                    response.body?.string()
 
-           }.onFailure {
-               if (it !is ConnectException){
-                   it.printStackTrace()
-               }
+                }.onFailure {
+                    if (it !is ConnectException) {
+                        it.printStackTrace()
+                    }
 
-          }.getOrNull()
-        }
+                }.getOrNull()
+            }
 
         private const val TAG = "auto_server"
 
         /**
          * 日志
          */
-        fun log(msg:String){
+        fun log(msg: String) {
             Db.get().logDao().insert(LogModel().apply {
                 level = LogLevel.INFO
                 app = TAG
                 message = msg
             })
-            Log.d("Server",msg)
+            Log.d("Server", msg)
         }
 
         /**
          * 错误日志
          */
-        fun log(e:Throwable){
+        fun log(e: Throwable) {
 
             Db.get().logDao().insert(LogModel().apply {
                 level = LogLevel.ERROR
                 app = TAG
-                message = e.message?:""
+                message = e.message ?: ""
             })
 
             e.printStackTrace()
@@ -169,7 +184,7 @@ class Server(context:Context) {
         }
 
         fun isRunOnMainThread() {
-            if (Thread.currentThread().name == "main"){
+            if (Thread.currentThread().name == "main") {
                 throw RuntimeException("不允许在主线程运行")
             }
         }

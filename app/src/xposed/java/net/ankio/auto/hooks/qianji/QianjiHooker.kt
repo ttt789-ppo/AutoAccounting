@@ -18,12 +18,13 @@ package net.ankio.auto.hooks.qianji
 import android.app.Application
 import net.ankio.auto.core.api.HookerManifest
 import net.ankio.auto.core.api.PartHooker
+import net.ankio.auto.hooks.qianji.hooks.AutoHooker
 import net.ankio.auto.hooks.qianji.hooks.SideBarHooker
 import net.ankio.dex.model.Clazz
 import net.ankio.dex.model.ClazzField
 import net.ankio.dex.model.ClazzMethod
 
-class QianjiHooker:HookerManifest() {
+class QianjiHooker : HookerManifest() {
     override val packageName: String
         get() = "com.mutangtech.qianji"
     override val appName: String
@@ -36,6 +37,7 @@ class QianjiHooker:HookerManifest() {
     override var partHookers: MutableList<PartHooker>
         get() = mutableListOf(
             SideBarHooker(),
+            AutoHooker(),
         )
         set(value) {}
     override var rules: MutableList<Clazz>
@@ -89,9 +91,141 @@ class QianjiHooker:HookerManifest() {
                     ),
                 ),
             ),
+
+            ///////////////////////////UserManager//////////////////////////////////////
+            Clazz(
+                name = "UserManager",
+                nameRule = "^\\w{0,2}\\..+",
+                type = "class",
+                methods =
+                listOf(
+                    ClazzMethod(
+                        name = "isLogin",
+                        returnType = "boolean",
+                    ),
+                    ClazzMethod(
+                        name = "isVip",
+                        returnType = "boolean",
+                    ),
+                    ClazzMethod(
+                        name = "isSuperVIP",
+                        returnType = "boolean",
+                    ),
+                ),
+            ),
+            ///////////////////////////Timeout//////////////////////////////////////
+            Clazz(
+                name = "TimeoutApp",
+                nameRule = "^\\w{0,2}\\..+",
+                type = "class",
+                methods =
+                listOf(
+                    ClazzMethod(
+                        name = "timeoutApp",
+                        returnType = "boolean",
+                    ),
+                    ClazzMethod(
+                        name = "timeoutUser",
+                        returnType = "boolean",
+                    ),
+                    ClazzMethod(
+                        name = "setTimeOutApp",
+                        returnType = "boolean",
+                    ),
+                ),
+            ),
+            ///////////////////////////AssetInsert//////////////////////////////////////
+            Clazz(
+                name = "AssetDbHelper",
+                nameRule = "com.mutangtech.qianji.data.db.convert.\\w+",
+                type = "class",
+                methods =
+                listOf(
+                    ClazzMethod(
+                        name = "insertOrReplace",
+                        returnType = "boolean",
+                    ),
+                    ClazzMethod(
+                        name = "saveLoanList",
+                        returnType = "boolean",
+                    ),
+                    ClazzMethod(
+                        name = "updateOrders",
+                        returnType = "boolean",
+                    ),
+                ),
+            ),
+            Clazz(
+                name = "BillDbHelper",
+                nameRule = "com.mutangtech.qianji.data.db.dbhelper.\\w+",
+                type = "class",
+                methods =
+                listOf(
+                    ClazzMethod(
+                        name = "saveOrUpdateBill",
+                        returnType = "boolean",
+                    ),
+                    ClazzMethod(
+                        name = "saveSyncedResult",
+                        returnType = "void",
+                    ),
+                ),
+            ),
+            //////////////////////钱迹BillTools////////////////////////////////////////
+            Clazz(
+                name = "BillTools",
+                nameRule = "^\\w{0,2}\\..+",
+                type = "class",
+                methods =
+                listOf(
+                    ClazzMethod(
+                        name = "deleteBook",
+                        returnType = "void",
+                    ),
+                    ClazzMethod(
+                        name = "getUnPushCount",
+                    ),
+                ),
+            ),
+            //////////////////////钱迹RequestInterface////////////////////////////////////////
+            Clazz(
+                name = "RequestInterface",
+                nameRule = "^\\w{0,2}\\..+",
+                type = "class",
+                methods =
+                listOf(
+                    ClazzMethod(
+                        name = "onExecuteRequest",
+                        returnType = "void",
+                    ),
+                    ClazzMethod(
+                        name = "onFinish",
+                    ),
+                    ClazzMethod(
+                        name = "onToastMsg",
+                    ),
+                    ClazzMethod(
+                        name = "onError",
+                    ),
+                ),
+            ),
+            Clazz(
+                name = "AssetsInterface",
+                nameRule = "com.mutangtech.qianji.network.api.asset.\\w+",
+                type = "class",
+                methods =
+                listOf(
+                    ClazzMethod(
+                        name = "getBindBill",
+                    ),
+                    ClazzMethod(
+                        name = "setBindBill",
+                    ),
+                ),
+            ),
+
         )
         set(value) {}
-
 
 
 }
