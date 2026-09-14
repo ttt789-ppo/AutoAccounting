@@ -28,7 +28,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// 一木记账适配接口 https://www.yimuapp.com/doc/import/scheme-url.html
+/**
+ * 一木记账适配接口
+ *
+ * 文档：https://www.yimuapp.com/doc/import/scheme-url.html
+ *
+ * 收支：yimu://api/addbill?money=...&parentCategory=...&asset=...
+ * 转账：yimu://api/addbill?type=transfer&money=...&fromAsset=...&toAsset=...
+ * 还款：yimu://api/addbill?type=repayment&money=...&fromAsset=...&toAsset=...
+ */
 class YiMuAdapter : IAppAdapter {
     override val pkg: String
         get() = "com.wangc.bill"
@@ -63,44 +71,13 @@ class YiMuAdapter : IAppAdapter {
     }
 
     override fun syncBill(billInfoModel: BillInfoModel) {
-        // 仅支持：支出/收入；其他类型直接返回
-        if (billInfoModel.type != BillType.Expend && billInfoModel.type != BillType.Income) return
-
-        // 分类（父/子）：收入场景将父类固定为"收入"，子类使用原父类；支出保持原父/子
-        val (rawParent, rawChild) = billInfoModel.categoryPair()
-        val (parentCategory, childCategory) = if (billInfoModel.type == BillType.Income) {
-            "收入" to rawParent
-        } else {
-            rawParent to rawChild
+        // 按账单类型组装 URL；不支持的类型直接丢弃
+        val uri = when (billInfoModel.type) {
+            BillType.Expend, BillType.Income -> buildIncomeExpendUri(billInfoModel)
+            BillType.Transfer, BillType.ExpendRepayment -> buildTransferRepaymentUri(billInfoModel)
+            else -> return
         }
 
-        // 必填：金额
-        val money = billInfoModel.money.toString()
-
-        // 可选：时间、备注、账户、账本、标签
-        val timeString = billInfoModel.time.takeIf { it > 0 }?.let(::formatTime).orEmpty()
-        val asset = sequenceOf(billInfoModel.accountNameFrom, billInfoModel.accountNameTo)
-            .firstOrNull { it.isNotEmpty() }
-            .orEmpty()
-        val bookName = billInfoModel.bookName
-        val tags = billInfoModel.tags.trim(',', ' ')
-
-        // 构建 yimu://api/addbill?... 协议
-        val uri = Uri.Builder()
-            .scheme("yimu")
-            .authority("api")
-            .appendPath("addbill")
-            .appendQueryParameter("money", money)
-            .apply {
-                appendIfNotBlank("parentCategory", parentCategory)
-                appendIfNotBlank("childCategory", childCategory)
-                appendIfNotBlank("time", timeString)
-                appendIfNotBlank("remark", billInfoModel.remark)
-                appendIfNotBlank("asset", asset)
-                appendIfNotBlank("bookName", bookName)
-                appendIfNotBlank("tags", tags)
-            }
-            .build()
         Logger.i("目标应用uri：$uri")
         // 调起目标 App 处理并在成功后标记同步完成
         val intent = Intent(Intent.ACTION_VIEW, uri).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
@@ -110,16 +87,75 @@ class YiMuAdapter : IAppAdapter {
     }
 
     /**
-     * 将毫秒时间戳格式化为 yyyy-MM-dd HH:mm:ss
+     * 构建收支账单 URI（不传 type，沿用原协议）。
      */
-    private fun formatTime(timeMillis: Long): String {
-        val date = Date(timeMillis)
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        return sdf.format(date)
+    private fun buildIncomeExpendUri(billInfoModel: BillInfoModel): Uri {
+        // 分类（父/子）：收入场景将父类固定为"收入"，子类使用原父类；支出保持原父/子
+        val (rawParent, rawChild) = billInfoModel.categoryPair()
+        val (parentCategory, childCategory) = if (billInfoModel.type == BillType.Income) {
+            "收入" to rawParent
+        } else {
+            rawParent to rawChild
+        }
+
+        // 账户：收支只需单账户，优先转出再转入
+        val asset = sequenceOf(billInfoModel.accountNameFrom, billInfoModel.accountNameTo)
+            .firstOrNull { it.isNotEmpty() }
+            .orEmpty()
+
+        return Uri.Builder()
+            .scheme("yimu")
+            .authority("api")
+            .appendPath("addbill")
+            .appendQueryParameter("money", billInfoModel.money.toString())
+            .apply {
+                appendIfNotBlank("parentCategory", parentCategory)
+                appendIfNotBlank("childCategory", childCategory)
+                appendIfNotBlank("time", formatTimeOrEmpty(billInfoModel.time))
+                appendIfNotBlank("remark", billInfoModel.remark)
+                appendIfNotBlank("asset", asset)
+                appendIfNotBlank("bookName", billInfoModel.bookName)
+                appendIfNotBlank("tags", billInfoModel.tags.trim(',', ' '))
+            }
+            .build()
     }
 
-    // 拆分类扩展函数定义在 BillTool.kt
+    /**
+     * 构建转账/还款 URI。
+     *
+     * - Transfer：默认 type=transfer；目标账户为信用卡时改为 repayment
+     * - ExpendRepayment：固定 type=repayment
+     */
+    private fun buildTransferRepaymentUri(billInfoModel: BillInfoModel): Uri {
+        val type = when {
+            billInfoModel.type == BillType.ExpendRepayment -> "repayment"
+            AppAdapterManager.isCreditAccount(billInfoModel.accountNameTo) -> "repayment"
+            else -> "transfer"
+        }
 
+        return Uri.Builder()
+            .scheme("yimu")
+            .authority("api")
+            .appendPath("addbill")
+            .appendQueryParameter("type", type)
+            .appendQueryParameter("money", billInfoModel.money.toString())
+            .apply {
+                appendIfNotBlank("fromAsset", billInfoModel.accountNameFrom)
+                appendIfNotBlank("toAsset", billInfoModel.accountNameTo)
+                appendIfNotBlank("time", formatTimeOrEmpty(billInfoModel.time))
+                appendIfNotBlank("remark", billInfoModel.remark)
+            }
+            .build()
+    }
+
+    /**
+     * 将毫秒时间戳格式化为 yyyy-MM-dd HH:mm:ss；无效时间返回空串。
+     */
+    private fun formatTimeOrEmpty(timeMillis: Long): String {
+        if (timeMillis <= 0) return ""
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        return sdf.format(Date(timeMillis))
+    }
 
     override fun syncWaitBills(billAction: BillAction, bookName: String) {
 
